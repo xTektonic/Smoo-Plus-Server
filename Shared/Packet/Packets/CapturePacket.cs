@@ -4,9 +4,9 @@ using System.Text;
 namespace Shared.Packet.Packets;
 
 [Packet(PacketType.CaptureInf)]
-public struct CapturePacket : IPacket
+public struct CapturePacket() : IPacket
 {
-    public string ModelName;
+    public string ModelName = string.Empty;
 
     public short Size => Constants.CostumeNameSize;
     public void Serialize(Span<byte> data)

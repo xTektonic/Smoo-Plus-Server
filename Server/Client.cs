@@ -1,8 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
+using Sever.Server;
 using Shared;
 using Shared.Packet;
 using Shared.Packet.Packets;
@@ -11,11 +10,11 @@ namespace Server;
 
 public class Client : IDisposable
 {
-    public readonly ConcurrentDictionary<string, object?> Metadata = new ConcurrentDictionary<string, object?>(); // can be used to store any information about a player
-    public bool Connected = false;
+    public readonly ConcurrentDictionary<string, object?> Metadata = new (); // can be used to store any information about a player
+    public bool Connected;
     public bool Ignored = false;
     public bool Banned = false;
-    public CostumePacket? CurrentCostume = null; // required for proper client sync
+    public CostumePacket? CurrentCostume; // required for proper client sync
     public string Name
     {
         get => Logger.Name;
@@ -23,15 +22,9 @@ public class Client : IDisposable
     }
 
     public Guid Id;
-    public Socket? Socket;
-    public Server Server { get; init; } = null!; //init'd in object initializer
+    public readonly Socket? Socket;
+    public Server Server { get; init; } = null!; // init'd in object initializer
     public Logger Logger { get; }
-
-    public Extras CurrentExtras { get; set; } = new Extras
-    {
-        InfiniteCapBounce = false,
-        Noclip = false
-    };
 
     public Client(Socket socket)
     {
@@ -112,19 +105,19 @@ public class Client : IDisposable
 
     public void CleanMetadataOnNewConnection()
     {
-        object? tmp;
-        Metadata.TryRemove("gameMode", out tmp);
-        Metadata.TryRemove("time", out tmp);
-        Metadata.TryRemove("seeking", out tmp);
-        Metadata.TryRemove("lastCostumePacket", out tmp);
-        Metadata.TryRemove("lastCapturePacket", out tmp);
-        Metadata.TryRemove("lastGamePacket", out tmp);
-        Metadata.TryRemove("lastPlayerPacket", out tmp);
+        Metadata.TryRemove("gameMode", out _);
+        Metadata.TryRemove("time", out _);
+        Metadata.TryRemove("seeking", out _);
+        Metadata.TryRemove("lastCostumePacket", out _);
+        Metadata.TryRemove("lastCapturePacket", out _);
+        Metadata.TryRemove("lastGamePacket", out _);
+        Metadata.TryRemove("lastPlayerPacket", out _);
     }
 
     public TagPacket? GetTagPacket()
     {
-        var gmode = (GameMode?)(this.Metadata.ContainsKey("gameMode") ? this.Metadata["gameMode"] : null);
+        if (!Metadata.TryGetValue("gameMode", out var gmodeObj)) { return null; }
+        var gmode = (GameMode?)gmodeObj;
         if (gmode == null) { return null; }
         if (gmode != GameMode.Legacy
             && gmode != GameMode.HideAndSeek
@@ -132,8 +125,10 @@ public class Client : IDisposable
             && gmode != GameMode.FreezeTag
         ) { return null; }
 
-        var time = (Time?)(this.Metadata.ContainsKey("time") ? this.Metadata["time"] : null);
-        var seek = (bool?)(this.Metadata.ContainsKey("seeking") ? this.Metadata["seeking"] : null);
+        Metadata.TryGetValue("time", out var timeObj);
+        Metadata.TryGetValue("seeking", out var seekObj);
+        var time = (Time?)timeObj;
+        var seek = (bool?)seekObj;
         if (time == null && seek == null) { return null; }
 
         return new TagPacket
@@ -141,27 +136,12 @@ public class Client : IDisposable
             GameMode = (GameMode)gmode,
             UpdateType = (seek != null ? TagPacket.TagUpdate.State : 0) | (time != null ? TagPacket.TagUpdate.Time : 0),
             IsIt = seek ?? false,
-            Seconds = (byte)(time?.Seconds ?? 0),
-            Minutes = (ushort)(time?.Minutes ?? 0),
+            Seconds = time?.Seconds ?? 0,
+            Minutes = time?.Minutes ?? 0,
         };
     }
 
-    public async Task SendMessage(
-    uint senderId,
-    SendMessagePacket.MessageTypes messageType,
-    string message
-    )
-    {
-        var packet = new SendMessagePacket
-        {
-            SenderId = senderId,
-            MessageType = messageType,
-            Message = message
-        };
-        await Send(packet);
-    }
-
-    public static bool operator ==(Client? left, Client? right)
+       public static bool operator ==(Client? left, Client? right)
     {
         return left is { } leftClient && right is { } rightClient && leftClient.Id == rightClient.Id;
     }
@@ -173,10 +153,9 @@ public class Client : IDisposable
 
     public override bool Equals(object? obj)
     {
-        if (obj is Client)
-            return this == (Client)obj;
-        else
-            return false;
+        if (obj is Client c)
+            return  this == c;
+        return false;
     }
 
     public override int GetHashCode()

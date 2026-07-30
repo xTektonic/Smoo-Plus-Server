@@ -1,6 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Text;
+﻿using System.Text;
 
 namespace Server;
 
@@ -158,12 +156,12 @@ public static class CommandHandler
             string[] args = input.Split(' ');
             if (args.Length == 0) return "No command entered, see help command for valid commands";
             //this part is to allow single arguments that contain spaces (since the game seems to be able to handle usernames with spaces, we need to as well)
-            List<string> newArgs = new List<string>();
-            newArgs.Add(args[0]);
+            List<string> newArgs = [args[0]];
             for (int i = 1; i < args.Length; i++)
             {
                 if (args[i].Length == 0) continue; //empty string (>1 whitespace between arguments).
-                else if (args[i][0] == '\"')
+                
+                if (args[i][0] == '\"')
                 {
                     //concatenate args until a string ends with a quote
                     StringBuilder sb = new StringBuilder();

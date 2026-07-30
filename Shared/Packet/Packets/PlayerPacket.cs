@@ -5,46 +5,31 @@ using System.Text;
 namespace Shared.Packet.Packets;
 
 [Packet(PacketType.PlayerInf)]
-public struct PlayerPacket : IPacket
+public struct PlayerPacket() : IPacket
 {
-    public const int ActSize = 0x20;
-    public const int SubActSize = 0x10;
-
-    public Vector3 Position;
-    public Quaternion Rotation;
-
+    public Vector3 Position = default;
+    public Quaternion Rotation = default;
     public float[] AnimationBlendWeights = Array.Empty<float>();
-
-    public ushort Act;
-    public ushort SubAct;
-
-    public PlayerPacket()
-    {
-        Position = default;
-        Rotation = default;
-        Act = 0;
-        SubAct = 0;
-    }
-
+    public ushort Act = 0;
+    public ushort SubAct = 0;
+    
     public short Size => 0x38;
 
     public void Serialize(Span<byte> data)
     {
-        int offset = 0;
-        MemoryMarshal.Write(data[..(offset += Marshal.SizeOf<Vector3>())], ref Position);
-        MemoryMarshal.Write(data[offset..(offset += Marshal.SizeOf<Quaternion>())], ref Rotation);
-        AnimationBlendWeights.CopyTo(MemoryMarshal.Cast<byte, float>(data[offset..(offset += 4 * 6)]));
-        MemoryMarshal.Write(data[offset++..++offset], ref Act);
-        MemoryMarshal.Write(data[offset++..++offset], ref SubAct);
+        MemoryMarshal.Write(data, in Position);
+        MemoryMarshal.Write(data[12..], in Rotation);
+        AnimationBlendWeights.CopyTo(MemoryMarshal.Cast<byte, float>(data[28..]));
+        MemoryMarshal.Write(data[52..], in Act);
+        MemoryMarshal.Write(data[54..], in SubAct);
     }
 
     public void Deserialize(ReadOnlySpan<byte> data)
     {
-        int offset = 0;
-        Position = MemoryMarshal.Read<Vector3>(data[..(offset += Marshal.SizeOf<Vector3>())]);
-        Rotation = MemoryMarshal.Read<Quaternion>(data[offset..(offset += Marshal.SizeOf<Quaternion>())]);
-        AnimationBlendWeights = MemoryMarshal.Cast<byte, float>(data[offset..(offset += 4 * 6)]).ToArray();
-        Act = MemoryMarshal.Read<ushort>(data[offset++..++offset]);
-        SubAct = MemoryMarshal.Read<ushort>(data[offset++..++offset]);
+        Position = MemoryMarshal.Read<Vector3>(data);
+        Rotation = MemoryMarshal.Read<Quaternion>(data[12..]);
+        AnimationBlendWeights = MemoryMarshal.Cast<byte, float>(data[28..]).ToArray();
+        Act = MemoryMarshal.Read<ushort>(data[52..]);
+        SubAct = MemoryMarshal.Read<ushort>(data[54..]);
     }
 }

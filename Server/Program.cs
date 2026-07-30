@@ -5,16 +5,14 @@ using System.Text;
 using System.Text.Json;
 using Server.JsonApi;
 using Server;
+using Sever.Server;
 using Shared;
 using Shared.Packet.Packets;
 using Timer = System.Timers.Timer;
-using System.Diagnostics.Tracing;
-using Shared.Packet;
 
 Server.Server server = new Server.Server();
 HashSet<int> shineBag = new HashSet<int>();
 CancellationTokenSource cts = new CancellationTokenSource();
-bool restartRequested = false;
 Logger consoleLogger = new Logger("Console");
 DiscordBot bot = new DiscordBot();
 await bot.Run();
@@ -124,7 +122,7 @@ timer.Start();
 
 float MarioSize(bool is2d) => is2d ? 180 : 160;
 
-void flipPlayer(Client c, ref PlayerPacket pp)
+void FlipPlayer(Client c, ref PlayerPacket pp)
 {
     pp.Position += Vector3.UnitY * MarioSize((bool)c.Metadata["2d"]!);
     pp.Rotation *= (
@@ -132,33 +130,21 @@ void flipPlayer(Client c, ref PlayerPacket pp)
       * Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationY(MathF.PI))
     );
 }
-;
 
-void logError(Task x)
+
+void LogError(Task x)
 {
     if (x.Exception != null)
     {
         consoleLogger.Error(x.Exception.ToString());
     }
 }
-;
+
 
 server.PacketHandler = (c, p) =>
 {
     switch (p)
     {
-
-        case DisconnectPacket dcPacket:
-            {
-                // c.Logger.Warn("Got Disconnect Packet");
-                Task.Run(async () =>
-                            {
-                                // await Task.Delay(500);
-                                await c.Send(new UnhandledPacket());
-                            });
-                return true;
-            }
-
         case GamePacket gamePacket:
             {
                 // crash ignored player
@@ -180,8 +166,7 @@ server.PacketHandler = (c, p) =>
                 c.Logger.Info($"Got game packet {gamePacket.Stage}->{gamePacket.ScenarioNum}");
 
                 // reset lastPlayerPacket on stage changes
-                object? old = null;
-                c.Metadata.TryGetValue("lastGamePacket", out old);
+                c.Metadata.TryGetValue("lastGamePacket", out object? old);
                 if (old != null && ((GamePacket)old).Stage != gamePacket.Stage)
                 {
                     c.Metadata["lastPlayerPacket"] = null;
@@ -228,7 +213,7 @@ server.PacketHandler = (c, p) =>
                     {
                         gp.ScenarioNum = (byte?)to.Metadata["scenario"] ?? 200;
 #pragma warning disable CS4014
-                        to.Send(gp, from).ContinueWith(logError);
+                        to.Send(gp, from).ContinueWith(LogError);
 #pragma warning restore CS4014
                     });
                     return false;
@@ -238,7 +223,7 @@ server.PacketHandler = (c, p) =>
             }
 
         // ignore all other packets from ignored players
-        case IPacket pack when c.Ignored:
+        case not null when c.Ignored:
             {
                 return false;
             }
@@ -251,8 +236,8 @@ server.PacketHandler = (c, p) =>
                     BanLists.Crash(c, 500);
                     return false;
                 }
-
-                if ((tagPacket.GameMode == GameMode.Legacy && tagPacket.UpdateType == TagPacket.TagUpdate.Both)
+                
+                if ( tagPacket is {GameMode: GameMode.Legacy, UpdateType: TagPacket.TagUpdate.Both}
                     || tagPacket.GameMode == GameMode.HideAndSeek
                     || tagPacket.GameMode == GameMode.Sardines
                     || tagPacket.GameMode == GameMode.FreezeTag
@@ -265,7 +250,7 @@ server.PacketHandler = (c, p) =>
                     }
                     if ((tagPacket.UpdateType & TagPacket.TagUpdate.Time) != 0)
                     {
-                        c.Metadata["time"] = new Time(tagPacket.Minutes, tagPacket.Seconds, DateTime.Now);
+                        c.Metadata["time"] = new Time(tagPacket.Minutes, tagPacket.Seconds);
                     }
                 }
                 else
@@ -325,9 +310,9 @@ server.PacketHandler = (c, p) =>
                     && Settings.Instance.Flip.Players.Contains(c.Id)
                 )
                 {
-                    flipPlayer(c, ref playerPacket);
+                    FlipPlayer(c, ref playerPacket);
 #pragma warning disable CS4014
-                    server.Broadcast(playerPacket, c).ContinueWith(logError);
+                    server.Broadcast(playerPacket, c).ContinueWith(LogError);
 #pragma warning restore CS4014
                     return false;
                 }
@@ -341,10 +326,10 @@ server.PacketHandler = (c, p) =>
                     {
                         if (Settings.Instance.Flip.Players.Contains(to.Id))
                         {
-                            flipPlayer(c, ref sp);
+                            FlipPlayer(c, ref sp);
                         }
 #pragma warning disable CS4014
-                        to.Send(sp, from).ContinueWith(logError);
+                        to.Send(sp, from).ContinueWith(LogError);
 #pragma warning restore CS4014
                     });
                     return false;
@@ -370,11 +355,11 @@ server.PacketHandler = (c, p) =>
         for (int i = (args[0] == "!*" ? 1 : 0); i < args.Length; i++)
         {
             string arg = args[i];
-            IEnumerable<Client> search = server.Clients.Where(c => c.Connected && (
+            var search = server.Clients.Where(c => c.Connected && (
                 c.Name.ToLower().StartsWith(arg.ToLower())
                 || (Guid.TryParse(arg, out Guid res) && res == c.Id)
                 || (IPAddress.TryParse(arg, out IPAddress? ip) && ip.Equals(((IPEndPoint)c.Socket!.RemoteEndPoint!).Address))
-            ));
+            )).ToList();
             if (!search.Any())
             {
                 failToFind.Add(arg); //none found
@@ -396,12 +381,12 @@ server.PacketHandler = (c, p) =>
                 }
                 else
                 {
-                    if (!ambig.Any(x => x.arg == arg))
+                    if (ambig.All(x => x.arg != arg))
                     {
                         ambig.Add((arg, search.Select(x => x.Name))); //more than one match
                     }
-                    foreach (var rem in search.ToList())
-                    { //need copy because can't remove from list while iterating over it
+                    foreach (var rem in search)
+                    { //already a list, no need to copy again
                         toActUpon.Remove(rem);
                     }
                 }
@@ -439,7 +424,7 @@ CommandHandler.RegisterCommand("rejoin", args =>
     {
         res.ambig.ForEach(x =>
         {
-            sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}");
+            sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(a => $"\"{a}\""))}");
         });
     }
 
@@ -467,7 +452,7 @@ CommandHandler.RegisterCommand("crash", args =>
     {
         res.ambig.ForEach(x =>
         {
-            sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}");
+            sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(a => $"\"{a}\""))}");
         });
     }
 
@@ -479,8 +464,8 @@ CommandHandler.RegisterCommand("crash", args =>
     return sb.ToString();
 });
 
-CommandHandler.RegisterCommand("ban", args => { return BanLists.HandleBanCommand(args, (args) => MultiUserCommandHelper(args)); });
-CommandHandler.RegisterCommand("unban", args => { return BanLists.HandleUnbanCommand(args); });
+CommandHandler.RegisterCommand("ban", args => BanLists.HandleBanCommand(args, MultiUserCommandHelper));
+CommandHandler.RegisterCommand("unban", args => BanLists.HandleUnbanCommand(args));
 
 CommandHandler.RegisterCommand("send", args =>
 {
@@ -549,115 +534,6 @@ CommandHandler.RegisterCommand("sendall", args =>
     return $"Sent players to {stage}:{-1}";
 });
 
-CommandHandler.RegisterCommand("infCapDive", args =>
-{
-    const string optionUsage = "Usage: infCapBounce <Player/*> <true/false>";
-    if (args.Length != 2)
-    {
-        return optionUsage;
-    }
-
-    string playerArg = args[0];
-    if (!bool.TryParse(args[1], out bool enable))
-        return optionUsage;
-
-    Client[] players = playerArg == "*"
-        ? server.Clients.Where(c => c.Connected).ToArray()
-        : server.Clients.Where(c => c.Connected && c.Name.StartsWith(playerArg, StringComparison.OrdinalIgnoreCase)).ToArray();
-
-    if (players.Length == 0)
-        return $"No player(s) found for '{playerArg}'";
-
-    Parallel.ForEachAsync(players, async (c, _) =>
-    {
-        await c.Send(new Extras
-        {
-            InfiniteCapBounce = enable,
-            Noclip = c.CurrentExtras.Noclip
-        });
-        c.CurrentExtras = new Extras
-        {
-            InfiniteCapBounce = enable,
-            Noclip = c.CurrentExtras.Noclip
-        };
-    }).Wait();
-
-
-    return $"Gave player/s: {string.Join(", ", players.Select(p => p.Name))} Infinite Cap Bounce: {enable}";
-
-});
-
-CommandHandler.UnregisterCommand("infCapDive"); // TODO: implement command in Mod
-
-CommandHandler.RegisterCommand("noclip", args =>
-{
-    const string optionUsage = "Usage: noclip <Player/*> <true/false>";
-    if (args.Length != 2)
-    {
-        return optionUsage;
-    }
-
-    string playerArg = args[0];
-    if (!bool.TryParse(args[1], out bool enable))
-        return optionUsage;
-
-    Client[] players = playerArg == "*"
-        ? server.Clients.Where(c => c.Connected).ToArray()
-        : server.Clients.Where(c => c.Connected && c.Name.StartsWith(playerArg, StringComparison.OrdinalIgnoreCase)).ToArray();
-
-    if (players.Length == 0)
-        return $"No player(s) found for '{playerArg}'";
-
-    Parallel.ForEachAsync(players, async (c, _) =>
-    {
-        await c.Send(new Extras
-        {
-            InfiniteCapBounce = c.CurrentExtras.InfiniteCapBounce,
-            Noclip = enable
-        });
-        c.CurrentExtras = new Extras
-        {
-            InfiniteCapBounce = c.CurrentExtras.InfiniteCapBounce,
-            Noclip = enable
-        };
-    }).Wait();
-
-    return $"Gave player/s: {string.Join(", ", players.Select(p => p.Name))} Noclip: {enable}";
-});
-
-CommandHandler.UnregisterCommand("noclip"); // TODO: implement command in Mod
-
-CommandHandler.RegisterCommand("setoutfit", args =>
-{
-    const string optionUsage = "Usage: setoutfit <Player/*> <body> <cap>";
-    if (args.Length != 3)
-        return optionUsage;
-
-    string playerArg = args[0];
-    string body = args[1];
-    string cap = args[2];
-
-    Client[] players = playerArg == "*"
-        ? server.Clients.Where(c => c.Connected).ToArray()
-        : server.Clients.Where(c => c.Connected && c.Name.StartsWith(playerArg, StringComparison.OrdinalIgnoreCase)).ToArray();
-
-    if (players.Length == 0)
-        return $"No player(s) found for '{playerArg}'";
-
-    Parallel.ForEachAsync(players, async (c, _) =>
-    {
-        await c.Send(new ChangeCostumePacket
-        {
-            BodyName = body,
-            CapName = cap
-        });
-    }).Wait();
-
-    return $"Set outfit for player/s: {string.Join(", ", players.Select(p => p.Name))} Body: {body} Cap: {cap}";
-});
-
-CommandHandler.UnregisterCommand("setoutfit"); // TODO: implement command in Mod
-
 CommandHandler.RegisterCommand("scenario", args =>
 {
     const string optionUsage = "Valid options: merge [true/false]";
@@ -710,10 +586,10 @@ CommandHandler.RegisterCommand("tag", args =>
                 };
                 if (args[1] == "*")
                 {
-                    Parallel.ForEachAsync(server.Clients, async (client, _) =>
+                    Parallel.ForEachAsync(server.Clients, async (c, _) =>
                     {
-                        await server.Broadcast(tagPacket, client);
-                        await client.Send(tagPacket);
+                        await server.Broadcast(tagPacket, c);
+                        await c.Send(tagPacket);
                     });
                 }
                 else if (client != null)
@@ -736,10 +612,10 @@ CommandHandler.RegisterCommand("tag", args =>
                 };
                 if (args[1] == "*")
                 {
-                    Parallel.ForEachAsync(server.Clients, async (client, _) =>
+                    Parallel.ForEachAsync(server.Clients, async (c, _) =>
                     {
-                        await server.Broadcast(tagPacket, client);
-                        await client.Send(tagPacket);
+                        await server.Broadcast(tagPacket, c);
+                        await c.Send(tagPacket);
                     });
                 }
                 else if (client != null)
@@ -758,9 +634,9 @@ CommandHandler.RegisterCommand("tag", args =>
                     return
                         $"Couldn't find seeker{(seekerNames.Length > 1 ? "s" : "")}: {string.Join(", ", seekerNames.Where(name => server.Clients.All(c => c.Name != name)))}";
                 // GameMode bestimmen: Wenn mindestens ein Spieler FreezeTag hat, dann FreezeTag, sonst Legacy
-                var mode = server.Clients.Select(c => c.Metadata.ContainsKey("gameMode") ? c.Metadata["gameMode"] : null)
-                    .FirstOrDefault(gm => gm != null && gm.ToString() == "FreezeTag");
-                var tagMode = mode != null ? Shared.Packet.Packets.GameMode.FreezeTag : Shared.Packet.Packets.GameMode.Legacy;
+                var mode = server.Clients.Select(c => c.Metadata.GetValueOrDefault("gameMode", null))
+                    .FirstOrDefault(gm => gm != null && (GameMode)gm == GameMode.FreezeTag);
+                var tagMode = mode != null ? GameMode.FreezeTag : GameMode.Legacy;
                 consoleLogger.Info($"[DEBUG] tagMode={tagMode}");
                 Task.Run(async () =>
                 {
@@ -883,7 +759,7 @@ CommandHandler.RegisterCommand("shine", args =>
     {
         case "list" when args.Length == 1:
             return $"Shines: {string.Join(", ", shineBag)}" + (
-                Settings.Instance.Shines.Excluded.Count() > 0
+                Settings.Instance.Shines.Excluded.Any()
                 ? "\nExcluded Shines: " + string.Join(", ", Settings.Instance.Shines.Excluded)
                 : ""
             );
@@ -892,7 +768,7 @@ CommandHandler.RegisterCommand("shine", args =>
             Task.Run(PersistShines);
 
             foreach (ConcurrentBag<int> playerBag in server.Clients.Select(serverClient =>
-                (ConcurrentBag<int>)serverClient.Metadata["shineSync"]!)) playerBag?.Clear();
+                (ConcurrentBag<int>)serverClient.Metadata["shineSync"]!)) playerBag.Clear();
 
             return "Cleared shine bags";
         case "sync" when args.Length == 1:
@@ -951,112 +827,6 @@ CommandHandler.RegisterCommand("shine", args =>
     }
 });
 
-CommandHandler.RegisterCommand("health", args =>
-{
-    const string optionUsage = "usage: health <player/*> <health>";
-    if (args.Length != 2)
-        return optionUsage;
-
-    if (!int.TryParse(args[1], out int health))
-        return optionUsage;
-
-    // Validierung: Minimum 0, Maximum 3
-    if (health < 0 || health > 3)
-    {
-        return "Health must be between 0 and 3";
-    }
-
-    var (failToFind, toActUpon, ambig) = MultiUserCommandHelper(args);
-
-    if (failToFind.Count > 0)
-    {
-        return $"Players not found: {string.Join(", ", failToFind)}";
-    }
-
-    if (toActUpon.Count == 0)
-    {
-        return "No players found";
-    }
-
-    foreach (Client client in toActUpon)
-    {
-        client.Metadata["lives"] = health;
-    }
-
-    return $"Set health to {health} for {toActUpon.Count} player(s)";
-});
-
-CommandHandler.UnregisterCommand("health"); // TODO: implement command in Mod
-
-CommandHandler.RegisterCommand("coins", args =>
-{
-    const string optionUsage = "usage: coins <player/*> <coins>";
-    if (args.Length != 2)
-        return optionUsage;
-
-    if (!int.TryParse(args[1], out int coins))
-        return optionUsage;
-
-    // Validierung: Minimum 0, Maximum 9999
-    if (coins < 0 || coins > 9999)
-    {
-        return "Coins must be between 0 and 9999";
-    }
-
-    var (failToFind, toActUpon, ambig) = MultiUserCommandHelper(args);
-
-    if (failToFind.Count > 0)
-    {
-        return $"Players not found: {string.Join(", ", failToFind)}";
-    }
-
-    if (toActUpon.Count == 0)
-    {
-        return "No players found";
-    }
-
-    foreach (Client client in toActUpon)
-    {
-        client.Metadata["coins"] = coins;
-    }
-
-    return $"Set coins to {coins} for {toActUpon.Count} player(s)";
-});
-
-CommandHandler.UnregisterCommand("coins"); // TODO: implement command in Mod
-
-CommandHandler.RegisterCommand("lifeup", args =>
-{
-    const string optionUsage = "usage: lifeup <player/*>";
-    if (args.Length != 1)
-        return optionUsage;
-
-    var (failToFind, toActUpon, ambig) = MultiUserCommandHelper(args);
-
-    if (failToFind.Count > 0)
-    {
-        return $"Players not found: {string.Join(", ", failToFind)}";
-    }
-
-    if (toActUpon.Count == 0)
-    {
-        return "No players found";
-    }
-
-    foreach (Client client in toActUpon)
-    {
-        client.Metadata["lives"] = 6;
-        int coins = 0;
-        if (client.Metadata.ContainsKey("coins"))
-            coins = Convert.ToInt32(client.Metadata["coins"]);
-        // Paket direkt schicken
-        client.Send(new Health_CoinsPacket { Health = 6, Coins = coins }).Wait();
-    }
-
-    return $"Gave Life Up Heart (6 Leben) an {toActUpon.Count} Spieler";
-});
-
-CommandHandler.UnregisterCommand("lifeup"); // TODO: implement command in Mod
 
 CommandHandler.RegisterCommand("loadsettings", _ =>
 {
@@ -1074,107 +844,10 @@ CommandHandler.RegisterCommand("restartserver", args =>
     else
     {
         consoleLogger.Info("Received restartserver command");
-        restartRequested = true;
         cts.Cancel();
         return "Restarting...";
     }
 });
-
-CommandHandler.RegisterHiddenCommand("Hello", args =>
-{
-    string[] messages = {
-        "Hello!",
-        "Hello!",//soll eine höhere wahrscheinlichkeit haben
-        "Hi there!",
-        "Greetings!",
-        "Welcome!",
-        "Hey!"
-    };
-
-    Random random = new Random();
-    string randomMessage = messages[random.Next(messages.Length)];
-
-    return $"\u001b[31m{randomMessage}\u001b[0m";
-});
-
-CommandHandler.RegisterCommandAliases(args =>
-{
-    if (args.Length < 2)
-    {
-        return "Usage: msg [username/*/system] [message]";
-    }
-
-    string target = args[0];
-
-    // Reconstruct message (everything after the first argument)
-    string message = string.Join(" ", args.Skip(1));
-
-    if (message.Length > Constants.MessageSize)
-    {
-        return "\u001b[0;31mMessage too long\u001b[0m";
-    }
-
-    // System message (broadcast)
-    if (target.Equals("system", StringComparison.OrdinalIgnoreCase))
-    {
-
-        Parallel.ForEachAsync(
-            server.Clients.Where(c => c.Connected),
-            async (client, _) =>
-            {
-                await client.SendMessage(
-                    senderId: 0,
-                    messageType: SendMessagePacket.MessageTypes.System,
-                    message: message
-                );
-            }
-        ).Wait();
-
-        return $"Sent system message to all clients";
-    }
-
-    if (target == "*")
-    {
-
-        Parallel.ForEachAsync(
-        server.Clients.Where(c => c.Connected),
-        async (client, _) =>
-        {
-            await client.SendMessage(
-                senderId: 0,
-                messageType: SendMessagePacket.MessageTypes.Chat,
-                message: message
-            );
-        }
-        ).Wait();
-
-        return $"Sent message to all players";
-    }
-
-    Client[] players = target == "*"
-            ? server.Clients.Where(c => c.Connected).ToArray()
-            : server.Clients.Where(c => c.Connected && target.Any(x => c.Name.StartsWith(x))).ToArray();
-
-    if (players.Count() == 0)
-    {
-        return "\u001b[0;31mPlayer not found\u001b[0m";
-    }
-
-
-    Parallel.ForEachAsync(
-            players,
-            async (client, _) =>
-            {
-                await client.SendMessage(
-                    senderId: 0,
-                    messageType: SendMessagePacket.MessageTypes.Chat,
-                    message: message
-                );
-            }
-            ).Wait();
-
-    return $"Sent message to \"{players[0].Name}\"";
-}, "sendmessage", "message", "msg");
 
 #endregion
 Console.CancelKeyPress += (_, e) =>
@@ -1206,13 +879,13 @@ Task.Run(() =>
             }
         }
     }
-}).ContinueWith(logError);
+}).ContinueWith(LogError);
 #pragma warning restore CS4014
 
 #region WebInterface
 // Webinterface nur starten, wenn aktiviert
 Task? webTask = null;
-if (false)//Settings.Instance.WebInterface.Enabled
+if(false)// (Settings.Instance.WebInterface.Enabled)
 {
     webTask = Task.Run(async () =>
     {
@@ -1253,7 +926,7 @@ if (false)//Settings.Instance.WebInterface.Enabled
                     {
                         using var reader = new StreamReader(context.Request.InputStream);
                         string body = await reader.ReadToEndAsync();
-                        var json = System.Text.Json.JsonDocument.Parse(body);
+                        var json = JsonDocument.Parse(body);
 
                         if (json.RootElement.TryGetProperty("Type", out var typeElement))
                         {
@@ -1356,13 +1029,9 @@ if (false)//Settings.Instance.WebInterface.Enabled
                 {
                     using var reader = new StreamReader(context.Request.InputStream);
                     string body = reader.ReadToEnd();
-                    string command = "";
-                    try
-                    {
-                        var json = System.Text.Json.JsonDocument.Parse(body);
-                        command = json.RootElement.GetProperty("command").GetString() ?? "";
-                    }
-                    catch { }
+    
+                    var json = JsonDocument.Parse(body);
+                    string command = json.RootElement.GetProperty("command").GetString() ?? "";
 
                     var result = CommandHandler.GetResult(command);
                     string output = string.Join("\n", result.ReturnStrings);
@@ -1381,7 +1050,7 @@ if (false)//Settings.Instance.WebInterface.Enabled
                 // API: Konsolen-Log abrufen
                 if (urlPath == "commands/output" && context.Request.HttpMethod == "GET")
                 {
-                    string output = Shared.Logger.GetGlobalOutput();
+                    string output = Logger.GetGlobalOutput();
                     context.Response.ContentType = "text/plain";
                     byte[] buffer = Encoding.UTF8.GetBytes(output);
                     context.Response.ContentLength64 = buffer.Length;
@@ -1407,7 +1076,7 @@ if (false)//Settings.Instance.WebInterface.Enabled
                 {
                     var banPlayers = Settings.Instance.BanList.Players?.Select(guid => guid.ToString()).ToArray() ?? Array.Empty<string>();
                     var banStages = Settings.Instance.BanList.Stages?.ToArray() ?? Array.Empty<string>();
-                    string response = System.Text.Json.JsonSerializer.Serialize(new
+                    string response = JsonSerializer.Serialize(new
                     {
                         players = banPlayers,
                         stages = banStages
@@ -1427,57 +1096,56 @@ if (false)//Settings.Instance.WebInterface.Enabled
                         .Select(c =>
                         {
                             float? posX = null, posY = null;
-                            if (c.Metadata.ContainsKey("lastPlayerPacket"))
+                            if (c.Metadata.TryGetValue("lastPlayerPacket", out var playerPacketObj))
                             {
-                                var pp = (PlayerPacket)c.Metadata["lastPlayerPacket"];
-                                posX = pp.Position.X;
-                                posY = pp.Position.Y;
+                                var pp = (PlayerPacket?)playerPacketObj;
+                                posX = pp?.Position.X;
+                                posY = pp?.Position.Y;
                             }
                             // Capture-Objekt auslesen
                             string capture = "";
-                            if (c.Metadata.ContainsKey("lastCapturePacket") && c.Metadata["lastCapturePacket"] is CapturePacket cp && cp.ModelName != null)
+                            if (c.Metadata.TryGetValue("lastCapturePacket", out var capturePacketObj) && capturePacketObj is CapturePacket cp)
                             {
                                 capture = cp.ModelName;
                             }
                             // GameMode auslesen
-                            string gameMode = "";
-                            if (c.Metadata.ContainsKey("gameMode") && c.Metadata["gameMode"] != null)
+                            string? gameMode = "";
+                            if (c.Metadata.TryGetValue("gameMode", out var gmObj) && gmObj != null)
                             {
-                                var gmObj = c.Metadata["gameMode"];
-                                Shared.Packet.Packets.GameMode? gmEnum = null;
-                                if (gmObj is Shared.Packet.Packets.GameMode gme)
+                                GameMode? gmEnum = null;
+                                if (gmObj is GameMode gme)
                                 {
                                     gmEnum = gme;
                                 }
                                 else if (gmObj is int gmi)
                                 {
-                                    gmEnum = (Shared.Packet.Packets.GameMode)gmi;
+                                    gmEnum = (GameMode)gmi;
                                 }
                                 else if (gmObj is sbyte gmsb)
                                 {
-                                    gmEnum = (Shared.Packet.Packets.GameMode)gmsb;
+                                    gmEnum = (GameMode)gmsb;
                                 }
-                                else if (gmObj is string gms && Enum.TryParse<Shared.Packet.Packets.GameMode>(gms, out var parsed))
+                                else if (gmObj is string gms && Enum.TryParse<GameMode>(gms, out var parsed))
                                 {
                                     gmEnum = parsed;
                                 }
                                 if (gmEnum != null)
                                 {
                                     gameMode = gmEnum.ToString();
-                                    if ((gmEnum == Shared.Packet.Packets.GameMode.HideAndSeek || gmEnum == Shared.Packet.Packets.GameMode.Sardines || gmEnum == Shared.Packet.Packets.GameMode.FreezeTag)
-                                        && c.Metadata.ContainsKey("seeking") && c.Metadata["seeking"] != null)
+                                    if ((gmEnum == GameMode.HideAndSeek || gmEnum == GameMode.Sardines || gmEnum == GameMode.FreezeTag)
+                                        && c.Metadata.TryGetValue("seeking", out var seekObj) && seekObj != null)
                                     {
                                         bool isSeeker = false;
-                                        if (bool.TryParse(c.Metadata["seeking"].ToString(), out bool parsedSeek)) isSeeker = parsedSeek;
-                                        if (gmEnum == Shared.Packet.Packets.GameMode.HideAndSeek)
+                                        if (bool.TryParse(seekObj.ToString(), out bool parsedSeek)) isSeeker = parsedSeek;
+                                        if (gmEnum == GameMode.HideAndSeek)
                                         {
                                             gameMode += isSeeker ? " (Seeker)" : " (Hider)";
                                         }
-                                        else if (gmEnum == Shared.Packet.Packets.GameMode.FreezeTag)
+                                        else if (gmEnum ==GameMode.FreezeTag)
                                         {
                                             gameMode += isSeeker ? " (Chaser)" : " (Runner)";
                                         }
-                                        else if (gmEnum == Shared.Packet.Packets.GameMode.Sardines)
+                                        else if (gmEnum == GameMode.Sardines)
                                         {
                                             gameMode += isSeeker ? " (Büchse)" : " (Sardine)";
                                         }
@@ -1489,27 +1157,27 @@ if (false)//Settings.Instance.WebInterface.Enabled
                                 }
                             }
                             // Neue Stats auslesen
-                            int lives = c.Metadata.ContainsKey("lives") ? Convert.ToInt32(c.Metadata["lives"]) : 0;
-                            int coins = c.Metadata.ContainsKey("coins") ? Convert.ToInt32(c.Metadata["coins"]) : 0;
-                            string outfit = c.Metadata.ContainsKey("outfit") ? c.Metadata["outfit"].ToString() ?? "" : "";
-                            float speed = c.Metadata.ContainsKey("speed") ? Convert.ToSingle(c.Metadata["speed"]) : 1.0f;
-                            float jumpHeight = c.Metadata.ContainsKey("jumpHeight") ? Convert.ToSingle(c.Metadata["jumpHeight"]) : 1.0f;
+                            int lives = c.Metadata.TryGetValue("lives", out var livesObj) ? Convert.ToInt32(livesObj) : 0;
+                            int coins = c.Metadata.TryGetValue("coins", out var coinsObj) ? Convert.ToInt32(coinsObj) : 0;
+                            string outfit = c.Metadata.TryGetValue("outfit", out var outfitObj) ? outfitObj?.ToString() ?? "" : "";
+                            float speed = c.Metadata.TryGetValue("speed", out var speedObj) ? Convert.ToSingle(speedObj) : 1.0f;
+                            float jumpHeight = c.Metadata.TryGetValue("jumpHeight", out var jumpHeightObj) ? Convert.ToSingle(jumpHeightObj) : 1.0f;
                             // Cap/Body ggf. Override verwenden
-                            string cap = c.Metadata.ContainsKey("capOverride") && c.Metadata["capOverride"] is string co && !string.IsNullOrEmpty(co)
+                            string cap = c.Metadata.TryGetValue("capOverride", out var capObj) && capObj is string co && !string.IsNullOrEmpty(co)
                                 ? co : (c.CurrentCostume?.CapName ?? "");
-                            string body = c.Metadata.ContainsKey("bodyOverride") && c.Metadata["bodyOverride"] is string bo && !string.IsNullOrEmpty(bo)
+                            string body = c.Metadata.TryGetValue("bodyOverride", out var bodyObj) && bodyObj is string bo && !string.IsNullOrEmpty(bo)
                                 ? bo : (c.CurrentCostume?.BodyName ?? "");
                             return new
                             {
-                                Name = c.Name,
+                                 c.Name,
                                 IPv4 = c.Connected ? ((IPEndPoint)c.Socket?.RemoteEndPoint!).Address.ToString() : null,
-                                Banned = c.Banned,
-                                Ignored = c.Ignored,
+                                 c.Banned,
+                                 c.Ignored,
                                 Cap = cap,
                                 Body = body,
                                 Capture = capture,
                                 GameMode = gameMode,
-                                Stage = c.Metadata.ContainsKey("lastGamePacket") ? ((GamePacket)c.Metadata["lastGamePacket"]).Stage : "",
+                                Stage = c.Metadata.TryGetValue("lastGamePacket", out var gpObj) ? ((GamePacket?)gpObj)?.Stage : "",
                                 PosX = posX,
                                 PosY = posY,
                                 Lives = lives,
@@ -1520,7 +1188,7 @@ if (false)//Settings.Instance.WebInterface.Enabled
                             };
                         }).ToArray();
 
-                    string response = System.Text.Json.JsonSerializer.Serialize(new { Players = players });
+                    string response = JsonSerializer.Serialize(new { Players = players });
                     context.Response.ContentType = "application/json";
                     byte[] buffer = Encoding.UTF8.GetBytes(response);
                     context.Response.ContentLength64 = buffer.Length;
@@ -1541,18 +1209,18 @@ if (false)//Settings.Instance.WebInterface.Enabled
                         var mapImages = new Dictionary<string, string>();
 
                         // Erstelle stagesByKingdom aus Stage2Alias und Alias2Kingdom
-                        foreach (var stageEntry in Shared.Stages.Stage2Alias)
+                        foreach (var stageEntry in Stages.Stage2Alias)
                         {
                             var stage = stageEntry.Key;
                             var alias = stageEntry.Value;
 
                             // Verwende ContainsKey und Indexer für OrderedDictionary
-                            if (Shared.Stages.Alias2Kingdom.Contains(alias))
+                            if (Stages.Alias2Kingdom.Contains(alias))
                             {
-                                var kingdom = Shared.Stages.Alias2Kingdom[alias]?.ToString();
+                                var kingdom = Stages.Alias2Kingdom[alias]?.ToString();
                                 if (!string.IsNullOrEmpty(kingdom))
                                 {
-                                    if (!stagesByKingdom.ContainsKey(kingdom))
+                                    if (!stagesByKingdom.TryGetValue(kingdom, out _))
                                     {
                                         stagesByKingdom[kingdom] = new List<string>();
                                     }
@@ -1588,7 +1256,7 @@ if (false)//Settings.Instance.WebInterface.Enabled
                             mapImages
                         };
 
-                        string jsonResponse = System.Text.Json.JsonSerializer.Serialize(response);
+                        string jsonResponse =JsonSerializer.Serialize(response);
                         context.Response.ContentType = "application/json";
                         byte[] buffer = Encoding.UTF8.GetBytes(jsonResponse);
                         context.Response.ContentLength64 = buffer.Length;

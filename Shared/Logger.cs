@@ -2,17 +2,13 @@
 
 namespace Shared;
 
-public class Logger {
-    private readonly List<string> outputBuffer = new();
-    private readonly object bufferLock = new();
-    private static readonly List<string> globalOutputBuffer = new();
-    private static readonly object globalBufferLock = new();
+public class Logger (string name) {
+    private readonly List<string> _buffer = new();
+    private readonly Lock _lock = new();
+    private static readonly List<string> GlobalBuffer = new();
+    private static readonly Lock GlobalLock = new();
 
-    public Logger(string name) {
-        Name = name;
-    }
-
-    public string Name { get; set; }
+    public string Name = name;
 
     public void Info(string text) => WriteAndHandle("Info", text, ConsoleColor.White);
 
@@ -24,34 +20,34 @@ public class Logger {
 
     private void WriteAndHandle(string level, string text, ConsoleColor color)
     {
-        lock (bufferLock)
+        lock (_lock)
         {
             foreach (var line in text.Split('\n'))
             {
-                outputBuffer.Add($"[{DateTime.Now}] {level} [{Name}] {line}");
-                if (outputBuffer.Count > 10000)
-                    outputBuffer.RemoveAt(0);
+                _buffer.Add($"[{DateTime.Now}] {level} [{Name}] {line}");
+                if (_buffer.Count > 10000)
+                    _buffer.RemoveAt(0);
             }
         }
 
         // Also append to global buffer
-        lock (globalBufferLock)
+        lock (GlobalLock)
         {
             foreach (var line in text.Split('\n'))
             {
-                globalOutputBuffer.Add($"[{DateTime.Now}] {level} [{Name}] {line}");
-                if (globalOutputBuffer.Count > 10000)
-                    globalOutputBuffer.RemoveAt(0);
+                GlobalBuffer.Add($"[{DateTime.Now}] {level} [{Name}] {line}");
+                if (GlobalBuffer.Count > 10000)
+                    GlobalBuffer.RemoveAt(0);
             }
         }
-        Handler?.Invoke(Name, level, text, color);
+        _handler?.Invoke(Name, level, text, color);
     }
 
     public string GetOutput()
     {
-        lock (bufferLock)
+        lock (_lock)
         {
-            return string.Join(Environment.NewLine, outputBuffer);
+            return string.Join(Environment.NewLine, _buffer);
         }
     }
 
@@ -67,22 +63,21 @@ public class Logger {
 
     public static string GetGlobalOutput()
     {
-        lock (globalBufferLock)
+        lock (GlobalLock)
         {
-            return string.Join(Environment.NewLine, globalOutputBuffer);
+            return string.Join(Environment.NewLine, GlobalBuffer);
         }
     }
 
     public delegate void LogHandler(string source, string level, string text, ConsoleColor color);
 
-    private static LogHandler? Handler;
-    public static void AddLogHandler(LogHandler handler) => Handler += handler;
+    private static LogHandler? _handler;
+    public static void AddLogHandler(LogHandler handler) => _handler += handler;
 
     static Logger() {
         AddLogHandler((source, level, text, color) => {
-            DateTime logtime = DateTime.Now;
             Console.ForegroundColor = color;
-            Console.Write(PrefixNewLines(text, $"{{{logtime}}} {level} [{source}]"));
+            Console.Write(PrefixNewLines(text, $"{{{DateTime.Now}}} {level} [{source}]"));
         });
     }
 }

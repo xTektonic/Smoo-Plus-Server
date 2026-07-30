@@ -3,15 +3,15 @@
 namespace Shared.Packet.Packets;
 
 [Packet(PacketType.ShineColl)]
-public struct ShinePacket : IPacket
+public struct ShinePacket() : IPacket
 {
-    public int ShineId;
+    public int ShineId = 0;
 
-    public short Size => 4;
+    public short Size => sizeof(int);
 
     public void Serialize(Span<byte> data)
     {
-        MemoryMarshal.Write(data, ref ShineId);
+        MemoryMarshal.Write(data, in ShineId);
     }
 
     public void Deserialize(ReadOnlySpan<byte> data)

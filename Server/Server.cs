@@ -1,7 +1,6 @@
 ﻿using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
 using Shared;
 using Shared.Packet;
 using Shared.Packet.Packets;
@@ -10,10 +9,10 @@ namespace Server;
 
 public class Server
 {
-    public readonly List<Client> Clients = new List<Client>();
+    public readonly List<Client> Clients = new ();
     public IEnumerable<Client> ClientsConnected => Clients.Where(client => client.Metadata.ContainsKey("lastGamePacket") && client.Connected);
-    public readonly Logger Logger = new Logger("Server");
-    private readonly MemoryPool<byte> memoryPool = MemoryPool<byte>.Shared;
+    public readonly Logger Logger = new ("Server");
+    private readonly MemoryPool<byte> _memoryPool = MemoryPool<byte>.Shared;
     public Func<Client, IPacket, bool>? PacketHandler = null!;
     public event Action<Client, ConnectPacket> ClientJoined = null!;
 
@@ -89,7 +88,7 @@ public class Server
 
     public void BroadcastReplace<T>(T packet, Client sender, PacketReplacer<T> packetReplacer) where T : struct, IPacket
     {
-        foreach (Client client in Clients.Where(c => c.Connected && !c.Ignored && sender.Id != c.Id))
+        foreach (var client in Clients.Where(c => c is { Connected: true, Ignored: false } && sender.Id != c.Id))
         {
             packetReplacer(sender, client, packet);
         }
@@ -97,10 +96,10 @@ public class Server
 
     public async Task Broadcast<T>(T packet, Client sender) where T : struct, IPacket
     {
-        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.RentZero(Constants.HeaderSize + packet.Size);
+        IMemoryOwner<byte> memory = _memoryPool.RentZero(Constants.HeaderSize + packet.Size);
         PacketHeader header = new PacketHeader
         {
-            Id = sender?.Id ?? Guid.Empty,
+            Id = sender.Id,
             Type = Constants.PacketMap[typeof(T)].Type,
             PacketSize = packet.Size,
         };
@@ -110,7 +109,7 @@ public class Server
 
     public Task Broadcast<T>(T packet) where T : struct, IPacket
     {
-        return Task.WhenAll(Clients.Where(c => c.Connected && !c.Ignored).Select(async client =>
+        return Task.WhenAll(Clients.Where(c => c is {Connected:true,Ignored:false}).Select(async client =>
         {
             IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.RentZero(Constants.HeaderSize + packet.Size);
             PacketHeader header = new PacketHeader
@@ -132,8 +131,9 @@ public class Server
     /// <param name="sender">Optional sender to not broadcast data to</param>
     public async Task Broadcast(IMemoryOwner<byte> data, Client? sender = null)
     {
-        await Task.WhenAll(Clients.Where(c => c.Connected && !c.Ignored && c != sender).Select(client => client.Send(data.Memory, sender)));
-        data.Dispose();
+            var memory = data.Memory;
+            await Task.WhenAll(Clients.Where(c => c is { Connected: true, Ignored: false } && c != sender).Select(client => client.Send(memory, sender)));
+            data.Dispose();
     }
 
     /// <summary>
@@ -141,9 +141,9 @@ public class Server
     /// </summary>
     /// <param name="data">Memory to send to the clients</param>
     /// <param name="sender">Optional sender to not broadcast data to</param>
-    public async void Broadcast(Memory<byte> data, Client? sender = null)
+    public async Task Broadcast(Memory<byte> data, Client? sender = null)
     {
-        await Task.WhenAll(Clients.Where(c => c.Connected && !c.Ignored && c != sender).Select(client => client.Send(data, sender)));
+        await Task.WhenAll(Clients.Where(c => c is { Connected: true, Ignored: false } && c != sender).Select(client => client.Send(data, sender)));
     }
 
     public Client? FindExistingClient(Guid id)
@@ -152,7 +152,7 @@ public class Server
     }
 
 
-    private async void HandleSocket(Socket socket)
+    private async Task HandleSocket(Socket socket)
     {
         Client client = new Client(socket) { Server = this };
         var remote = socket.RemoteEndPoint;
@@ -163,7 +163,7 @@ public class Server
         {
             while (true)
             {
-                memory = memoryPool.Rent(Constants.HeaderSize);
+                memory = _memoryPool.Rent(Constants.HeaderSize);
 
                 async Task<bool> Read(Memory<byte> readMem, int readSize, int readOffset)
                 {
@@ -196,7 +196,7 @@ public class Server
                 if (header.PacketSize > 0)
                 {
                     IMemoryOwner<byte> memTemp = memory; // header to copy to new memory
-                    memory = memoryPool.Rent(Constants.HeaderSize + header.PacketSize);
+                    memory = _memoryPool.Rent(Constants.HeaderSize + header.PacketSize);
                     memTemp.Memory.Span[..Constants.HeaderSize].CopyTo(memory.Memory.Span[..Constants.HeaderSize]);
                     memTemp.Dispose();
                     if (!await Read(memory.Memory, header.PacketSize, Constants.HeaderSize))
@@ -223,7 +223,7 @@ public class Server
                     client.Name = connect.ClientName;
 
                     // is the IPv4 address banned?
-                    if (BanLists.Enabled && BanLists.IsIPv4Banned(((IPEndPoint)socket.RemoteEndPoint!).Address!))
+                    if (BanLists.Enabled && BanLists.IsIPv4Banned(((IPEndPoint)socket.RemoteEndPoint!).Address))
                     {
                         Logger.Warn($"Ignoring banned IPv4 address for {client.Name} ({client.Id}/{remote})");
                         client.Ignored = true;
@@ -247,7 +247,6 @@ public class Server
                     await client.Send(new InitPacket
                     {
                         MaxPlayers = (client.Ignored ? (ushort)1 : Settings.Instance.Server.MaxPlayers),
-                        Version = Constants.ServerVersion,
                     });
 
                     // don't init or announce an ignored client to other players any further
@@ -309,7 +308,8 @@ public class Server
                         if (isClientNew)
                         {
                             // do any cleanup required when it comes to new clients
-                            List<Client> toDisconnect = Clients.FindAll(c => c.Id == client.Id && c.Connected && c.Socket != null);
+
+                            List<Client> toDisconnect = Clients.FindAll(c => c.Id == client.Id && c is {Connected:true, Socket: not null});
                             Clients.RemoveAll(c => c.Id == client.Id);
 
                             Clients.Add(client);
@@ -327,7 +327,7 @@ public class Server
                     }
 
                     // for all other clients that are already connected
-                    List<Client> otherConnectedPlayers = Clients.FindAll(c => c.Id != client.Id && c.Connected && c.Socket != null);
+                    List<Client> otherConnectedPlayers = Clients.FindAll(c => c.Id != client.Id && c is {Connected:true,Socket: not null});
                     await Parallel.ForEachAsync(otherConnectedPlayers, async (other, _) =>
                     {
                         IMemoryOwner<byte> tempBuffer = MemoryPool<byte>.Shared.RentZero(Constants.HeaderSize + (other.CurrentCostume.HasValue ? Math.Max(connect.Size, other.CurrentCostume.Value.Size) : connect.Size));
@@ -434,8 +434,8 @@ public class Server
         {
             Logger.Info($"Client {remote} disconnected from the server");
         }
-
-    close:
+        
+        close:
         bool wasConnected = client.Connected;
         client.Connected = false;
         try
@@ -455,7 +455,7 @@ public class Server
 
     private async Task ResendPackets(Client client)
     {
-        async Task trySendPack<T>(Client other, T? packet) where T : struct, IPacket
+        async Task TrySendPack<T>(Client other, T? packet) where T : struct, IPacket
         {
             if (packet == null) { return; }
             try
@@ -467,26 +467,27 @@ public class Server
                 // lol who gives a fuck
             }
         }
-        ;
-        async Task trySendMeta<T>(Client other, string packetType) where T : struct, IPacket
+        
+        async Task TrySendMeta<T>(Client other, string packetType) where T : struct, IPacket
         {
-            if (!other.Metadata.ContainsKey(packetType)) { return; }
-            await trySendPack<T>(other, (T)other.Metadata[packetType]!);
+            if (other.Metadata.TryGetValue(packetType, out var value))
+            {
+                await TrySendPack<T>(other, (T)value!);
+            }
         }
-        ;
+        
         await Parallel.ForEachAsync(this.ClientsConnected, async (other, _) =>
         {
             if (client.Id == other.Id) { return; }
-            await trySendMeta<CostumePacket>(other, "lastCostumePacket");
-            await trySendMeta<CapturePacket>(other, "lastCapturePacket");
-            await trySendPack<TagPacket>(other, other.GetTagPacket());
-            await trySendMeta<GamePacket>(other, "lastGamePacket");
-            await trySendMeta<PlayerPacket>(other, "lastPlayerPacket");
-            await trySendMeta<Health_CoinsPacket>(other, "lastHealthCoinsPacket");
+            await TrySendMeta<CostumePacket>(other, "lastCostumePacket");
+            await TrySendMeta<CapturePacket>(other, "lastCapturePacket");
+            await TrySendPack(other, other.GetTagPacket());
+            await TrySendMeta<GamePacket>(other, "lastGamePacket");
+            await TrySendMeta<PlayerPacket>(other, "lastPlayerPacket");
         });
     }
 
-    private async Task SendEmptyPackets(Client client, Client other)
+    private static async Task SendEmptyPackets(Client client, Client other)
     {
         await other.Send(new TagPacket
         {

@@ -5,21 +5,21 @@ using System.Text;
 namespace Shared.Packet.Packets;
 
 [Packet(PacketType.CapInf)]
-public struct CapPacket : IPacket
+public struct CapPacket() : IPacket
 {
     public const int NameSize = 0x30;
-    public Vector3 Position;
-    public Quaternion Rotation;
-    public bool CapOut;
-    public string CapAnim;
-
+    public Vector3 Position = default;
+    public Quaternion Rotation = default;
+    public bool CapOut = false;
+    public string CapAnim =  string.Empty;
+    
     public short Size => 0x50;
 
     public void Serialize(Span<byte> data)
     {
-        MemoryMarshal.Write(data, ref Position);
-        MemoryMarshal.Write(data[12..], ref Rotation);
-        MemoryMarshal.Write(data[28..], ref CapOut);
+        MemoryMarshal.Write(data, in Position);
+        MemoryMarshal.Write(data[12..], in Rotation);
+        MemoryMarshal.Write(data[28..], in CapOut);
         Encoding.UTF8.GetBytes(CapAnim).CopyTo(data[32..(32 + NameSize)]);
     }
 

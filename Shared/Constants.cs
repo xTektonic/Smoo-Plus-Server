@@ -5,11 +5,9 @@ using Shared.Packet.Packets;
 
 namespace Shared;
 
-public static class Constants {
+public static class Constants
+{
     public const int CostumeNameSize = 0x20;
-    public const int MessageSize = 0x4B;
-    public const string ServerVersion = "SMOO+ 0.5 pre";
-    public const int VersionSize = 0x20;
 
     // dictionary of packet types to packet
     public static readonly Dictionary<Type, PacketAttribute> PacketMap = Assembly
@@ -17,11 +15,15 @@ public static class Constants {
         .GetTypes()
         .Where(type => type.IsAssignableTo(typeof(IPacket)) && type.GetCustomAttribute<PacketAttribute>() != null)
         .ToDictionary(type => type, type => type.GetCustomAttribute<PacketAttribute>()!);
+
     public static readonly Dictionary<PacketType, Type> PacketIdMap = Assembly
         .GetExecutingAssembly()
         .GetTypes()
         .Where(type => type.IsAssignableTo(typeof(IPacket)) && type.GetCustomAttribute<PacketAttribute>() != null)
         .ToDictionary(type => type.GetCustomAttribute<PacketAttribute>()!.Type, type => type);
 
-    public static int HeaderSize { get; } = PacketHeader.StaticSize;
+    public static int HeaderSize => PacketHeader.StaticSize;
 }
+
+
+

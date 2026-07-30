@@ -3,30 +3,31 @@
 namespace Shared.Packet.Packets;
 
 [Packet(PacketType.TagInf)]
-public struct TagPacket : IPacket
+public struct TagPacket() : IPacket
 {
-    public GameMode GameMode;
-    public TagUpdate UpdateType;
-    public bool IsIt;
-    public byte Seconds;
-    public ushort Minutes;
+    public GameMode GameMode = GameMode.Legacy;
+    public TagUpdate UpdateType = TagUpdate.Both;
+    public bool IsIt = false;
+    public byte Seconds = 0;
+    public ushort Minutes = 0;
 
+    
     public short Size => 5;
 
     public void Serialize(Span<byte> data)
     {
         byte both = (byte)((byte)UpdateType | ((byte)GameMode << 4));
-        MemoryMarshal.Write(data, ref both);
-        MemoryMarshal.Write(data[1..], ref IsIt);
-        MemoryMarshal.Write(data[2..], ref Seconds);
-        MemoryMarshal.Write(data[3..], ref Minutes);
+        MemoryMarshal.Write(data, in both);
+        MemoryMarshal.Write(data[1..], in IsIt);
+        MemoryMarshal.Write(data[2..], in Seconds);
+        MemoryMarshal.Write(data[3..], in Minutes);
     }
 
     public void Deserialize(ReadOnlySpan<byte> data)
     {
         byte both = MemoryMarshal.Read<byte>(data);
-        GameMode = (GameMode)(sbyte)(((((both & (byte)0xf0) >> 4) + 1) % 16) - 1);
-        UpdateType = (TagUpdate)(byte)(both & (byte)0x0f);
+        GameMode = (GameMode)(sbyte)((((both & 0xf0) >> 4) + 1) % 16 - 1);
+        UpdateType = (TagUpdate)(byte)(both & 0x0f);
         IsIt = MemoryMarshal.Read<bool>(data[1..]);
         Seconds = MemoryMarshal.Read<byte>(data[2..]);
         Minutes = MemoryMarshal.Read<ushort>(data[3..]);
@@ -61,8 +62,8 @@ public enum GameMode : sbyte
     HideAndSeek = 1,
     Sardines = 2,
     FreezeTag = 3,
-    Prophunt = 4,
-    MANHUNT = 5,
+    Unknown04 = 4,
+    Unknown05 = 5,
     Unknown06 = 6,
     Unknown07 = 7,
     Unknown08 = 8,

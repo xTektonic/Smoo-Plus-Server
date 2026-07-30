@@ -4,20 +4,18 @@ using System.Text;
 namespace Shared.Packet.Packets;
 
 [Packet(PacketType.PlayerConnect)]
-public struct ConnectPacket : IPacket
+public struct ConnectPacket() : IPacket
 {
     public ConnectionTypes ConnectionType = ConnectionTypes.FirstConnection;
     public ushort MaxPlayers = 0;
     public string ClientName = "?????";
 
-    public ConnectPacket() { }
-
     public short Size => 6 + Constants.CostumeNameSize;
 
     public void Serialize(Span<byte> data)
     {
-        MemoryMarshal.Write(data, ref ConnectionType);
-        MemoryMarshal.Write(data[4..], ref MaxPlayers);
+        MemoryMarshal.Write(data, in ConnectionType);
+        MemoryMarshal.Write(data[4..], in MaxPlayers);
         Encoding.UTF8.GetBytes(ClientName).CopyTo(data[6..(6 + Constants.CostumeNameSize)]);
     }
 

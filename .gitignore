@@ -1,14 +1,15 @@
-﻿/.vs
-/.devtools/
-/.vscode/
+﻿.vs
+.devtools/
+.vscode/
 bin/
 obj/
-/packages/
+packages/
 riderModule.iml
 /_ReSharper.Caches/
 .idea/
 settings.json
 .vs/**
+.direnv
 
 /cache/
 /data/

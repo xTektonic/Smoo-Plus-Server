@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
-using Shared;
 using Shared.Packet.Packets;
 
 namespace Server;
@@ -11,48 +10,29 @@ using MUCH = Func<string[], (HashSet<string> failToFind, HashSet<Client> toActUp
 
 public static class BanLists {
     public static bool Enabled {
-        get {
-            return Settings.Instance.BanList.Enabled;
-        }
-        private set {
-            Settings.Instance.BanList.Enabled = value;
-        }
+        get => Settings.Instance.BanList.Enabled;
+        private set => Settings.Instance.BanList.Enabled = value;
     }
 
-    private static ISet<string> IPs {
-        get {
-            return Settings.Instance.BanList.IpAddresses;
-        }
-    }
+    private static ISet<string> IpSet => Settings.Instance.BanList.IpAddresses;
 
-    private static ISet<Guid> Profiles {
-        get {
-            return Settings.Instance.BanList.Players;
-        }
-    }
+    private static ISet<Guid> Profiles =>Settings.Instance.BanList.Players;
+    
 
-    private static ISet<string> Stages {
-        get {
-            return Settings.Instance.BanList.Stages;
-        }
-    }
+    private static ISet<string> Stages => Settings.Instance.BanList.Stages;
+    
 
-    private static ISet<sbyte> GameModes {
-        get {
-            return Settings.Instance.BanList.GameModes;
-        }
-    }
+    private static ISet<sbyte> GameModes => Settings.Instance.BanList.GameModes;
 
 
-    private static bool IsIPv4(string str) {
+    private static bool IsIPv4(string str)
+    {
         return IPAddress.TryParse(str, out IPAddress? ip)
-            && ip != null
-            && ip.AddressFamily == AddressFamily.InterNetwork;
-        ;
+               && ip.AddressFamily == AddressFamily.InterNetwork;
     }
 
 
-    public static bool IsIPv4Banned(Client user) {
+    private static bool IsIPv4Banned(Client user) {
         IPEndPoint? ipv4 = (IPEndPoint?) user.Socket?.RemoteEndPoint;
         if (ipv4 == null) { return false; }
         return IsIPv4Banned(ipv4.Address);
@@ -60,11 +40,11 @@ public static class BanLists {
     public static bool IsIPv4Banned(IPAddress ipv4) {
         return IsIPv4Banned(ipv4.ToString());
     }
-    public static bool IsIPv4Banned(string ipv4) {
-        return IPs.Contains(ipv4);
+    private static bool IsIPv4Banned(string ipv4) {
+        return IpSet.Contains(ipv4);
     }
 
-    public static bool IsProfileBanned(Client user) {
+    private static bool IsProfileBanned(Client user) {
         return IsProfileBanned(user.Id);
     }
     public static bool IsProfileBanned(string str) {
@@ -98,7 +78,7 @@ public static class BanLists {
         BanIPv4(ipv4.ToString());
     }
     private static void BanIPv4(string ipv4) {
-        IPs.Add(ipv4);
+        IpSet.Add(ipv4);
     }
 
     private static void BanProfile(Client user) {
@@ -136,7 +116,7 @@ public static class BanLists {
         UnbanIPv4(ipv4.ToString());
     }
     private static void UnbanIPv4(string ipv4) {
-        IPs.Remove(ipv4);
+        IpSet.Remove(ipv4);
     }
 
     private static void UnbanProfile(Client user) {
@@ -166,12 +146,12 @@ public static class BanLists {
 
     public static void Crash(
         Client user,
-        int  delay_ms  = 0
+        int  delayMs  = 0
     ) {
         user.Ignored = true;
         Task.Run(async () => {
-            if (delay_ms > 0) {
-                await Task.Delay(delay_ms);
+            if (delayMs > 0) {
+                await Task.Delay(delayMs);
             }
             bool permanent = user.Banned;
             await user.Send(new ChangeStagePacket {
@@ -210,9 +190,9 @@ public static class BanLists {
                 StringBuilder list = new StringBuilder();
                 list.Append("BanList: " + (Enabled ? "enabled" : "disabled"));
 
-                if (IPs.Count > 0) {
+                if (IpSet.Count > 0) {
                     list.Append("\nBanned IPv4 addresses:\n- ");
-                    list.Append(string.Join("\n- ", IPs));
+                    list.Append(string.Join("\n- ", IpSet));
                 }
 
                 if (Profiles.Count > 0) {
@@ -260,7 +240,7 @@ public static class BanLists {
                 sb.Append(res.failToFind.Count > 0 ? "\nFailed to find matches for: " + string.Join(", ", res.failToFind.Select(x => $"\"{x.ToLower()}\"")) : "");
                 if (res.ambig.Count > 0) {
                     res.ambig.ForEach(x => {
-                        sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(x => $"\"{x}\""))}");
+                        sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(a => $"\"{a}\""))}");
                     });
                 }
 
@@ -329,7 +309,7 @@ public static class BanLists {
                 if (args.Length != 1) {
                     return "Usage: ban gamemode <gamemode>";
                 }
-                if (!GameMode.TryParse(args[0], out GameMode gameMode)) {
+                if (!Enum.TryParse(args[0], out GameMode gameMode)) {
                     return "Invalid gamemode value!";
                 }
                 if (IsGameModeBanned(gameMode)) {
@@ -393,7 +373,7 @@ public static class BanLists {
                 return "Unbanned stage: " + string.Join(", ", stages);
 
             case "gamemode":
-                if (!GameMode.TryParse(val, out GameMode gameMode)) {
+                if (!Enum.TryParse(val, out GameMode gameMode)) {
                     return "Invalid gamemode value!";
                 }
                 if (!IsGameModeBanned(gameMode)) {

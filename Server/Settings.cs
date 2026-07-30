@@ -2,6 +2,7 @@
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using Newtonsoft.Json.Serialization;
+using Sever.Server;
 using Shared;
 
 namespace Server;
@@ -44,15 +45,15 @@ public class Settings {
         }
     }
 
-    public ServerTable Server { get; set; } = new ServerTable();
-    public FlipTable Flip { get; set; } = new FlipTable();
-    public ScenarioTable Scenario { get; set; } = new ScenarioTable();
-    public BanListTable BanList { get; set; } = new BanListTable();
-    public DiscordTable Discord { get; set; } = new DiscordTable();
-    public ShineTable Shines { get; set; } = new ShineTable();
-    public PersistShinesTable PersistShines { get; set; } = new PersistShinesTable();
-    public JsonApiTable JsonApi { get; set; } = new JsonApiTable();
-    public WebInterfaceTable WebInterface { get; set; } = new WebInterfaceTable();
+    public readonly ServerTable Server = new();
+    public readonly FlipTable Flip = new();
+    public readonly ScenarioTable Scenario = new();
+    public readonly BanListTable BanList = new();
+    public readonly DiscordTable Discord = new();
+    public readonly ShineTable Shines = new();
+    public readonly PersistShinesTable PersistShines = new();
+    public readonly JsonApiTable JsonApi = new();
+    public readonly WebInterfaceTable WebInterface = new();
 
     public class ServerTable {
         public string Address { get; set; } = IPAddress.Any.ToString();
@@ -61,11 +62,11 @@ public class Settings {
     }
 
     public class ScenarioTable {
-        public bool MergeEnabled { get; set; } = false;
+        public bool MergeEnabled { get; set; }
     }
 
     public class BanListTable {
-        public bool Enabled { get; set; } = false;
+        public bool Enabled { get; set; }
         public ISet<Guid> Players { get; set; } = new SortedSet<Guid>();
         public ISet<string> IpAddresses { get; set; } = new SortedSet<string>();
         public ISet<string> Stages { get; set; } = new SortedSet<string>();
@@ -78,36 +79,37 @@ public class Settings {
         public FlipOptions Pov { get; set; } = FlipOptions.Both;
     }
 
-    public class DiscordTable {
-        public string? Token { get; set; }
-        public string Prefix { get; set; } = "$";
-        public string? CommandChannel { get; set; }
-        public string? LogChannel { get; set; }
+    public class DiscordTable
+    {
+        public readonly string? Token = null;
+        public readonly string Prefix = "$";
+        public readonly string? CommandChannel = null;
+        public readonly string? LogChannel = null;
     }
 
     public class ShineTable {
-        public bool Enabled { get; set; } = true;
-        public ISet<int> Excluded { get; set; } = new SortedSet<int> { 496 };
-        public bool ClearOnNewSaves { get; set; } = false;
+        public bool Enabled = true;
+        public readonly ISet<int> Excluded = new SortedSet<int>();
+        public readonly bool ClearOnNewSaves = false;
     }
 
     public class PersistShinesTable
     {
-        public bool Enabled { get; set; } = false;
-        public string Filename { get; set; } = "./moons.json";
+        public readonly bool Enabled = false;
+        public readonly string Filename = "./moons.json";
     }
 
     public class JsonApiTable
     {
-        public bool Enabled { get; set; } = false;
-        public Dictionary<string, SortedSet<string>> Tokens { get; set; } = new Dictionary<string, SortedSet<string>>();
+        public readonly bool Enabled = false;
+        public readonly Dictionary<string, SortedSet<string>> Tokens = new();
     }
     public class WebInterfaceTable
     {
-        public string? Username { get; set; } = "admin";
-        public string? Password { get; set; } = "admin";
-        public bool Enabled { get; set; } = true;
-        public string? Address { get; set; } = "localhost";
-        public ushort Port { get; set; } = 8080;
+        public readonly string Username = "admin";
+        public readonly string Password = "admin";
+        public readonly bool Enabled = true;
+        public readonly string? Address = "localhost";
+        public readonly ushort Port = 8080;
     }
 }

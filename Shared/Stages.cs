@@ -27,10 +27,10 @@ public static class Stages
 
                 foreach (var (alias, info) in customData)
                 {
-                    Alias2Stage[alias] = info.HomeStage ?? "";
-                    Alias2Kingdom[alias] = info.Kingdom ?? "";
+                    Alias2Stage[alias] = info.HomeStage;
+                    Alias2Kingdom[alias] = info.Kingdom;
 
-                    foreach (var stage in info.Stages ?? Enumerable.Empty<string>())
+                    foreach (var stage in info.Stages)
                     {
                         Stage2Alias[stage] = alias;
                     }
@@ -84,12 +84,12 @@ public static class Stages
         return result;
     }
 
-    public static bool IsAlias(string input)
+    private static bool IsAlias(string input)
     {
         return Alias2Stage.ContainsKey(input);
     }
 
-    public static bool IsStage(string input)
+    private static bool IsStage(string input)
     {
         return Stage2Alias.ContainsKey(input);
     }
@@ -117,7 +117,7 @@ public static class Stages
         }
     }
 
-    public static readonly Dictionary<string, string> Alias2Stage = new Dictionary<string, string>() {
+    private static readonly Dictionary<string, string> Alias2Stage = new () {
         { "cap",     "CapWorldHomeStage"       },
         { "cascade", "WaterfallWorldHomeStage" },
         { "sand",    "SandWorldHomeStage"      },
@@ -139,7 +139,7 @@ public static class Stages
 
     };
 
-    public static readonly OrderedDictionary Alias2Kingdom = new OrderedDictionary() {
+    public static readonly OrderedDictionary Alias2Kingdom = new () {
         { "cap",     "Cap Kingdom"      },
         { "cascade", "Cascade Kingdom"  },
         { "sand",    "Sand Kingdom"     },
@@ -160,7 +160,7 @@ public static class Stages
         { "odyssey", "Odyssey"          },
     };
 
-    public static readonly Dictionary<string, string> Stage2Alias = new Dictionary<string, string>() {
+    public static readonly Dictionary<string, string> Stage2Alias = new() {
         { "CapWorldHomeStage"                     , "cap"     },
         { "CapWorldTowerStage"                    , "cap"     },
         { "FrogSearchExStage"                     , "cap"     },
