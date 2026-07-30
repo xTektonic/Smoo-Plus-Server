@@ -16,14 +16,14 @@ public struct CoinCollectCollPacket() : IPacket
     
     public void Serialize(Span<byte> data) {
         Encoding.UTF8.GetBytes(PlaceId).CopyTo(data[..IdSize]);
-        Encoding.UTF8.GetBytes(Stage).CopyTo(data[IdSize..(IdSize + StageSize)]);
-        MemoryMarshal.Write(data[(IdSize + StageSize)..], WorldId);
+        MemoryMarshal.Write(data[IdSize..(IdSize+4)], WorldId);
+        Encoding.UTF8.GetBytes(Stage).CopyTo(data[(IdSize + 4)..(IdSize + 4 + StageSize)]);
         
     }
     public void Deserialize(ReadOnlySpan<byte> data) {
         PlaceId = Encoding.UTF8.GetString(data[..IdSize]).TrimNullTerm();
-        Stage = Encoding.UTF8.GetString(data[IdSize..(IdSize + StageSize)]).TrimNullTerm();
-        WorldId = BitConverter.ToInt32(data[(IdSize + StageSize)..(IdSize + StageSize+4)]);
+        WorldId = BitConverter.ToInt32(data[(IdSize)..(IdSize + 4)]);
+        Stage = Encoding.UTF8.GetString(data[(IdSize + 4)..(IdSize + 4 + StageSize)]).TrimNullTerm();
         
 
     }

@@ -26,10 +26,10 @@ public class Settings {
             }
             catch (Exception e) {
                 Logger.Warn($"Failed to load settings.json: {e}");
-                needSave = true; // Fehler beim Laden: Defaults speichern
+                needSave = true;
             }
         } else {
-            needSave = true; // Datei existiert nicht: Defaults speichern
+            needSave = true;
         }
         if (needSave) SaveSettings();
         LoadHandler?.Invoke();

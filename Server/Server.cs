@@ -184,25 +184,27 @@ public class Server
 
                     return true;
                 }
+                // if blank data, close socket
+                if (!await Read(memory.Memory, Constants.HeaderSize, 0)) { break; }
 
-                if (!await Read(memory.Memory[..Constants.HeaderSize], Constants.HeaderSize, 0))
+                PacketHeader header = GetHeader(memory.Memory.Span);
+                
+                // if API Request, close socket after request is handled
+                if (first && await JsonApi.JsonApi.HandleAPIRequest(this, socket, header, memory)) { goto close; } 
+                
+                int packetSize = header.PacketSize;
+                
+                Range packetRange = Constants.HeaderSize..(Constants.HeaderSize + packetSize);
+                if (packetSize > 0)
                 {
-                    break;
-                }
-                PacketHeader header = GetHeader(memory.Memory.Span[..Constants.HeaderSize]);
-                if (first && await JsonApi.JsonApi.HandleAPIRequest(this, socket, header, memory)) { goto close; }
-
-                Range packetRange = Constants.HeaderSize..(Constants.HeaderSize + header.PacketSize);
-                if (header.PacketSize > 0)
-                {
+                    // resize memory to fit entire packet
                     IMemoryOwner<byte> memTemp = memory; // header to copy to new memory
-                    memory = _memoryPool.Rent(Constants.HeaderSize + header.PacketSize);
+                    memory = _memoryPool.Rent(Constants.HeaderSize + packetSize);
                     memTemp.Memory.Span[..Constants.HeaderSize].CopyTo(memory.Memory.Span[..Constants.HeaderSize]);
                     memTemp.Dispose();
-                    if (!await Read(memory.Memory, header.PacketSize, Constants.HeaderSize))
-                    {
-                        break;
-                    }
+                    
+                    //read rest of packet
+                    if (!await Read(memory.Memory, packetSize, Constants.HeaderSize)) { break; }
                 }
 
                 // connection initialization
@@ -223,26 +225,19 @@ public class Server
                     client.Name = connect.ClientName;
 
                     // is the IPv4 address banned?
-                    if (BanLists.Enabled && BanLists.IsIPv4Banned(((IPEndPoint)socket.RemoteEndPoint!).Address))
-                    {
-                        Logger.Warn($"Ignoring banned IPv4 address for {client.Name} ({client.Id}/{remote})");
-                        client.Ignored = true;
-                        client.Banned = true;
-                    }
-                    // is the profile ID banned?
-                    else if (BanLists.Enabled && BanLists.IsProfileBanned(client.Id))
-                    {
-                        client.Logger.Warn($"Ignoring banned profile ID for {client.Name} ({client.Id}/{remote})");
-                        client.Ignored = true;
-                        client.Banned = true;
-                    }
+                    bool banned = BanLists.Enabled &&
+                                  (BanLists.IsIPv4Banned(((IPEndPoint)socket.RemoteEndPoint!).Address) ||
+                                   BanLists.IsProfileBanned(client.Id));
                     // is the server full?
-                    else if (Clients.Count(x => x.Connected) >= Settings.Instance.Server.MaxPlayers)
-                    {
-                        client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Instance.Server.MaxPlayers}");
-                        client.Ignored = true;
-                    }
+                    bool isServerFull = Clients.Count(x => x.Connected) >= Settings.Instance.Server.MaxPlayers;
+                    
+                    if (banned) Logger.Warn($"Ignoring banned player {client.Name} ({client.Id}/{remote})");
+                    else if (isServerFull) client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Instance.Server.MaxPlayers}");
+                    
 
+                    client.Banned = banned;
+                    client.Ignored = banned || isServerFull;
+    
                     // send server init (required to crash ignored players later)
                     await client.Send(new InitPacket
                     {
@@ -262,7 +257,8 @@ public class Server
                     lock (Clients)
                     {
                         // is the server full? (check again, to prevent race conditions)
-                        if (Clients.Count(x => x.Connected) >= Settings.Instance.Server.MaxPlayers)
+                        isServerFull = Clients.Count(x => x.Connected) >= Settings.Instance.Server.MaxPlayers;
+                        if (isServerFull)
                         {
                             client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Instance.Server.MaxPlayers}");
                             client.Ignored = true;
@@ -275,10 +271,8 @@ public class Server
                         switch (connect.ConnectionType)
                         {
                             case ConnectPacket.ConnectionTypes.FirstConnection:
-                            case ConnectPacket.ConnectionTypes.Reconnecting:
-                                {
-                                    if (FindExistingClient(client.Id) is { } oldClient)
-                                    {
+                            case ConnectPacket.ConnectionTypes.Reconnecting: {
+                                    if (FindExistingClient(client.Id) is { } oldClient) {
                                         isClientNew = false;
                                         client = new Client(oldClient, socket);
                                         client.Name = connect.ClientName;
@@ -290,15 +284,13 @@ public class Server
                                             oldClient.Dispose();
                                         }
                                     }
-                                    else
-                                    {
+                                    else {
                                         connect.ConnectionType = ConnectPacket.ConnectionTypes.FirstConnection;
                                     }
 
                                     break;
                                 }
-                            default:
-                                {
+                            default: {
                                     throw new Exception($"Invalid connection type {connect.ConnectionType} for {client.Name} ({client.Id}/{remote})");
                                 }
                         }
@@ -355,7 +347,7 @@ public class Server
                             connectHeader.Type = PacketType.CostumeInf;
                             connectHeader.PacketSize = other.CurrentCostume.Value.Size;
                             connectHeader.Serialize(tempBuffer.Memory.Span[..Constants.HeaderSize]);
-                            other.CurrentCostume.Value.Serialize(tempBuffer.Memory.Span[Constants.HeaderSize..(Constants.HeaderSize + connectHeader.PacketSize)]);
+                            other.CurrentCostume.Value.Serialize(tempBuffer.Memory.Span[Constants.HeaderSize..]);
                             await client.Send(tempBuffer.Memory[..(Constants.HeaderSize + connectHeader.PacketSize)], null);
                         }
 
@@ -382,7 +374,7 @@ public class Server
                 {
                     // parse the packet
                     IPacket packet = (IPacket)Activator.CreateInstance(Constants.PacketIdMap[header.Type])!;
-                    packet.Deserialize(memory.Memory.Span[Constants.HeaderSize..(Constants.HeaderSize + packet.Size)]);
+                    packet.Deserialize(memory.Memory.Span[Constants.HeaderSize..]);
 
                     // process the packet
                     if (PacketHandler?.Invoke(client, packet) is false)
@@ -507,7 +499,7 @@ public class Server
     {
         //no need to error check, the client will disconnect when the packet is invalid :)
         PacketHeader header = new PacketHeader();
-        header.Deserialize(data[..Constants.HeaderSize]);
+        header.Deserialize(data);
         return header;
     }
 }

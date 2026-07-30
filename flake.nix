@@ -12,7 +12,7 @@
         inherit system;
       };
       deps = with pkgs; [
-        dotnetCorePackages.sdk_8_0
+        dotnetCorePackages.sdk_10_0
       ];
     in
       {

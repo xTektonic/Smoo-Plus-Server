@@ -7,6 +7,7 @@ using Server.JsonApi;
 using Server;
 using Sever.Server;
 using Shared;
+using Shared.Packet;
 using Shared.Packet.Packets;
 using Timer = System.Timers.Timer;
 
@@ -17,46 +18,34 @@ Logger consoleLogger = new Logger("Console");
 DiscordBot bot = new DiscordBot();
 await bot.Run();
 
-consoleLogger.Info("Server gestartet!");
+consoleLogger.Info("Server started!");
 
-async Task PersistShines()
-{
-    if (!Settings.Instance.PersistShines.Enabled)
-    {
+async Task PersistShines() {
+    if (!Settings.Instance.PersistShines.Enabled) {
         return;
     }
 
-    try
-    {
+    try {
         string shineJson = JsonSerializer.Serialize(shineBag);
         await File.WriteAllTextAsync(Settings.Instance.PersistShines.Filename, shineJson);
     }
-    catch (Exception ex)
-    {
+    catch (Exception ex) {
         consoleLogger.Error(ex);
     }
 }
 
-async Task LoadShines()
-{
-    if (!Settings.Instance.PersistShines.Enabled)
-    {
+async Task LoadShines() {
+    if (!Settings.Instance.PersistShines.Enabled) {
         return;
     }
-
-    try
-    {
+    try {
         string shineJson = await File.ReadAllTextAsync(Settings.Instance.PersistShines.Filename);
         var loadedShines = JsonSerializer.Deserialize<HashSet<int>>(shineJson);
 
         if (loadedShines is not null) shineBag = loadedShines;
     }
-    catch (FileNotFoundException)
-    {
-        // Ignore
-    }
-    catch (Exception ex)
-    {
+    catch (FileNotFoundException) { }
+    catch (Exception ex) {
         consoleLogger.Error(ex);
     }
 }
@@ -64,284 +53,270 @@ async Task LoadShines()
 // Load shines table from file
 await LoadShines();
 
-server.ClientJoined += (c, _) =>
-{
-    c.Metadata["shineSync"] = new ConcurrentBag<int>();
+server.ClientJoined += (c, _) => {
+    c.Metadata["shineBag"] = new ConcurrentBag<int>();
     c.Metadata["loadedSave"] = false;
     c.Metadata["scenario"] = (byte?)0;
     c.Metadata["2d"] = false;
     c.Metadata["disableShineSync"] = false;
-    c.Metadata["lives"] = 3;
-    c.Metadata["coins"] = 0;
-    c.Metadata["outfit"] = "";
-    c.Metadata["speed"] = 1.0f;
-    c.Metadata["jumpHeight"] = 1.0f;
 };
 
-async Task ClientSyncShineBag(Client client)
-{
+async Task ClientSyncShineBag(Client client, bool force = false) {
     if (!Settings.Instance.Shines.Enabled) return;
-    try
-    {
+    try {
         if ((bool?)client.Metadata["disableShineSync"] ?? false) return;
-        ConcurrentBag<int> clientBag = (ConcurrentBag<int>)(client.Metadata["shineSync"] ??= new ConcurrentBag<int>());
-        foreach (int shine in shineBag.Except(clientBag).Except(Settings.Instance.Shines.Excluded).ToArray())
-        {
+        ConcurrentBag<int> clientBag = (ConcurrentBag<int>)(client.Metadata["shineBag"] ??= new ConcurrentBag<int>());
+        foreach (int shine in shineBag) {
+            if (!force && (clientBag.Contains(shine) || Settings.Instance.Shines.Excluded.Contains(shine))) continue;
             if (!client.Connected) return;
-            await client.Send(new ShinePacket
-            {
-                ShineId = shine
-            });
+            await client.Send(new ShinePacket { ShineId = shine });
             clientBag.Add(shine);
         }
     }
-    catch
-    {
+    catch {
         // errors that can happen when sending will crash the server :)
     }
 }
 
-async void SyncShineBag()
-{
-    try
-    {
+async void SyncShineBag(bool force = false) {
+    try {
         await PersistShines();
-        await Parallel.ForEachAsync(server.ClientsConnected.ToArray(), async (client, _) => await ClientSyncShineBag(client));
+        await Parallel.ForEachAsync(server.ClientsConnected.ToArray(), async (client, _) => await ClientSyncShineBag(client, force));
     }
-    catch
-    {
+    catch {
         // errors that can happen shines change will crash the server :)
     }
 }
 
-Timer timer = new Timer(120000);
-timer.AutoReset = true;
-timer.Enabled = true;
+Timer timer = new Timer(120000) { // 2 minutes
+    AutoReset = true,
+    Enabled = true,
+};
 timer.Elapsed += (_, _) => { SyncShineBag(); };
-timer.Start();
 
 float MarioSize(bool is2d) => is2d ? 180 : 160;
 
-void FlipPlayer(Client c, ref PlayerPacket pp)
-{
+void FlipPlayer(Client c, ref PlayerPacket pp) {
     pp.Position += Vector3.UnitY * MarioSize((bool)c.Metadata["2d"]!);
-    pp.Rotation *= (
-        Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationX(MathF.PI))
-      * Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationY(MathF.PI))
-    );
+    pp.Rotation *= Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationX(MathF.PI))
+                   * Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationY(MathF.PI));
 }
 
-
-void LogError(Task x)
-{
+void LogError(Task x) {
     if (x.Exception != null)
     {
         consoleLogger.Error(x.Exception.ToString());
     }
 }
 
-
-server.PacketHandler = (c, p) =>
-{
-    switch (p)
+server.PacketHandler = (client, packet) => {
+    switch (packet)
     {
-        case GamePacket gamePacket:
-            {
-                // crash ignored player
-                if (c.Ignored)
-                {
-                    c.Logger.Info($"Crashing ignored player after entering stage {gamePacket.Stage}.");
-                    BanLists.Crash(c, 500);
-                    return false;
-                }
-
-                // crash player entering a banned stage
-                if (BanLists.Enabled && BanLists.IsStageBanned(gamePacket.Stage))
-                {
-                    c.Logger.Warn($"Crashing player for entering banned stage {gamePacket.Stage}.");
-                    BanLists.Crash(c, 500);
-                    return false;
-                }
-
-                c.Logger.Info($"Got game packet {gamePacket.Stage}->{gamePacket.ScenarioNum}");
-
-                // reset lastPlayerPacket on stage changes
-                c.Metadata.TryGetValue("lastGamePacket", out object? old);
-                if (old != null && ((GamePacket)old).Stage != gamePacket.Stage)
-                {
-                    c.Metadata["lastPlayerPacket"] = null;
-                }
-
-                c.Metadata["scenario"] = gamePacket.ScenarioNum;
-                c.Metadata["2d"] = gamePacket.Is2d;
-                c.Metadata["lastGamePacket"] = gamePacket;
-
-                switch (gamePacket.Stage)
-                {
-                    case "CapWorldHomeStage" when gamePacket.ScenarioNum == 1:
-                    case "CapWorldTowerStage" when gamePacket.ScenarioNum == 1:
-                        if (!((bool?)c.Metadata["disableShineSync"] ?? false))
-                        {
-                            c.Metadata["disableShineSync"] = true;
-                            ((ConcurrentBag<int>)(c.Metadata["shineSync"] ??= new ConcurrentBag<int>())).Clear();
-                            c.Logger.Info("Entered Cap on new save, preventing moon sync until Cascade");
-                            if (Settings.Instance.Shines.ClearOnNewSaves)
-                            {
-                                shineBag.Clear();
-                                c.Logger.Info("Cleared shine bags");
-                                Task.Run(PersistShines);
-                            }
-                        }
-                        break;
-                    default:
-                        if ((bool?)c.Metadata["disableShineSync"] ?? false)
-                        {
-                            Task.Run(async () =>
-                            {
-                                c.Logger.Info("Entered Cascade or later with moon sync disabled, enabling moon sync again");
-                                await Task.Delay(2000);
-                                c.Metadata["disableShineSync"] = false;
-                                await ClientSyncShineBag(c);
-                            });
-                        }
-                        break;
-                }
-
-                if (Settings.Instance.Scenario.MergeEnabled)
-                {
-                    server.BroadcastReplace(gamePacket, c, (from, to, gp) =>
-                    {
-                        gp.ScenarioNum = (byte?)to.Metadata["scenario"] ?? 200;
-#pragma warning disable CS4014
-                        to.Send(gp, from).ContinueWith(LogError);
-#pragma warning restore CS4014
-                    });
-                    return false;
-                }
-
-                break;
-            }
-
-        // ignore all other packets from ignored players
-        case not null when c.Ignored:
-            {
+        //TODO: change clear shine bag to game start packet
+        case GamePacket gamePacket: {
+            // crash ignored player
+            if (client.Ignored) {
+                client.Logger.Info($"Crashing ignored player after entering stage {gamePacket.Stage}.");
+                BanLists.Crash(client, 500);
                 return false;
             }
 
-        case TagPacket tagPacket:
+            // crash player entering a banned stage
+            if (BanLists.Enabled && BanLists.IsStageBanned(gamePacket.Stage)) {
+                client.Logger.Warn($"Crashing player for entering banned stage {gamePacket.Stage}.");
+                BanLists.Crash(client, 500);
+                return false;
+            }
+
+            client.Logger.Info($"Got game packet {gamePacket.Stage}->{gamePacket.ScenarioNum}");
+
+            // reset lastPlayerPacket on stage changes
+            client.Metadata.TryGetValue("lastGamePacket", out object? old);
+            if (old != null && ((GamePacket)old).Stage != gamePacket.Stage) {
+                client.Metadata["lastPlayerPacket"] = null;
+            }
+
+            client.Metadata["scenario"] = gamePacket.ScenarioNum;
+            client.Metadata["2d"] = gamePacket.Is2d;
+            client.Metadata["lastGamePacket"] = gamePacket;
+
+            switch (gamePacket.Stage)
             {
-                if (BanLists.Enabled && BanLists.IsGameModeBanned(tagPacket.GameMode))
-                {
-                    c.Logger.Warn($"Crashing player for entering banned gamemode {tagPacket.GameMode}.");
-                    BanLists.Crash(c, 500);
-                    return false;
-                }
-                
-                if ( tagPacket is {GameMode: GameMode.Legacy, UpdateType: TagPacket.TagUpdate.Both}
-                    || tagPacket.GameMode == GameMode.HideAndSeek
-                    || tagPacket.GameMode == GameMode.Sardines
-                    || tagPacket.GameMode == GameMode.FreezeTag
-                )
-                {
-                    // c.Logger.Info($"Got tag packet: {tagPacket.GameMode} {tagPacket.UpdateType} {tagPacket.IsIt} {tagPacket.Minutes}:{tagPacket.Seconds}");
-                    if ((tagPacket.UpdateType & TagPacket.TagUpdate.State) != 0)
+                case "CapWorldHomeStage" when gamePacket.ScenarioNum == 1:
+                case "CapWorldTowerStage" when gamePacket.ScenarioNum == 1:
+                    if (!((bool?)client.Metadata["disableShineSync"] ?? false))
                     {
-                        c.Metadata["seeking"] = tagPacket.IsIt;
-                    }
-                    if ((tagPacket.UpdateType & TagPacket.TagUpdate.Time) != 0)
-                    {
-                        c.Metadata["time"] = new Time(tagPacket.Minutes, tagPacket.Seconds);
-                    }
-                }
-                else
-                {
-                    // c.Logger.Info($"Got tag packet: {tagPacket.GameMode} {(byte) tagPacket.UpdateType}");
-                    c.Metadata["seeking"] = null;
-                    c.Metadata["time"] = null;
-                }
-                c.Metadata["gameMode"] = tagPacket.GameMode;
-
-                break;
-            }
-
-        case CapturePacket capturePacket:
-            {
-                // c.Logger.Info($"Got capture packet: {capturePacket.ModelName}");
-                c.Metadata["lastCapturePacket"] = capturePacket;
-                break;
-            }
-
-        case CostumePacket costumePacket:
-            {
-                c.Logger.Info($"Got costume packet: {costumePacket.BodyName}, {costumePacket.CapName}");
-                c.Metadata["lastCostumePacket"] = costumePacket;
-                c.CurrentCostume = costumePacket;
-#pragma warning disable CS4014
-                ClientSyncShineBag(c); //no point logging since entire def has try/catch
-#pragma warning restore CS4014
-                c.Metadata["loadedSave"] = true;
-                break;
-            }
-
-        case ShinePacket shinePacket:
-            {
-                if (!Settings.Instance.Shines.Enabled) return false;
-                if (Settings.Instance.Shines.Excluded.Contains(shinePacket.ShineId))
-                {
-                    c.Logger.Info($"Got moon {shinePacket.ShineId} (excluded)");
-                    return false;
-                }
-                if (c.Metadata["loadedSave"] is false) break;
-                ConcurrentBag<int> playerBag = (ConcurrentBag<int>)c.Metadata["shineSync"]!;
-                shineBag.Add(shinePacket.ShineId);
-                if (playerBag.Contains(shinePacket.ShineId)) break;
-                c.Logger.Info($"Got moon {shinePacket.ShineId}");
-                playerBag.Add(shinePacket.ShineId);
-                SyncShineBag();
-                break;
-            }
-
-        case PlayerPacket playerPacket:
-            {
-                c.Metadata["lastPlayerPacket"] = playerPacket;
-                // flip for all
-                if (Settings.Instance.Flip.Enabled
-                    && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Others
-                    && Settings.Instance.Flip.Players.Contains(c.Id)
-                )
-                {
-                    FlipPlayer(c, ref playerPacket);
-#pragma warning disable CS4014
-                    server.Broadcast(playerPacket, c).ContinueWith(LogError);
-#pragma warning restore CS4014
-                    return false;
-                }
-                // flip only for specific clients
-                if (Settings.Instance.Flip.Enabled
-                    && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Self
-                    && !Settings.Instance.Flip.Players.Contains(c.Id)
-                )
-                {
-                    server.BroadcastReplace(playerPacket, c, (from, to, sp) =>
-                    {
-                        if (Settings.Instance.Flip.Players.Contains(to.Id))
+                        client.Metadata["disableShineSync"] = true;
+                        ((ConcurrentBag<int>)(client.Metadata["shineBag"] ??= new ConcurrentBag<int>())).Clear();
+                        client.Logger.Info("Entered Cap on new save, preventing moon sync until Cascade");
+                        if (Settings.Instance.Shines.ClearOnNewSaves)
                         {
-                            FlipPlayer(c, ref sp);
+                            shineBag.Clear();
+                            client.Logger.Info("Cleared shine bags");
+                            Task.Run(PersistShines);
                         }
-#pragma warning disable CS4014
-                        to.Send(sp, from).ContinueWith(LogError);
-#pragma warning restore CS4014
-                    });
-                    return false;
-                }
-                break;
+                    }
+                    break;
+                default:
+                    if ((bool?)client.Metadata["disableShineSync"] ?? false)
+                    {
+                        Task.Run(async () =>
+                        {
+                            client.Logger.Info("Entered Cascade or later with moon sync disabled, enabling moon sync again");
+                            await Task.Delay(2000);
+                            client.Metadata["disableShineSync"] = false;
+                            await ClientSyncShineBag(client);
+                        });
+                    }
+                    break;
             }
+
+            if (Settings.Instance.Scenario.MergeEnabled)
+            {
+                server.BroadcastReplace(gamePacket, client, (from, to, gp) =>
+                {
+                    gp.ScenarioNum = (byte?)to.Metadata["scenario"] ?? 200;
+#pragma warning disable CS4014
+                    to.Send(gp, from).ContinueWith(LogError);
+#pragma warning restore CS4014
+                });
+                return false;
+            }
+
+            break;
+        }
+
+        // ignore all other packets from ignored players
+        case not null when client.Ignored: {
+                return false;
+            }
+
+        case TagPacket tagPacket: {
+            if (BanLists.Enabled && BanLists.IsGameModeBanned(tagPacket.GameMode))
+            {
+                client.Logger.Warn($"Crashing player for entering banned gamemode {tagPacket.GameMode}.");
+                BanLists.Crash(client, 500);
+                return false;
+            }
+            
+            if ( tagPacket is {GameMode: GameMode.Legacy, UpdateType: TagPacket.TagUpdate.Both}
+                || tagPacket.GameMode == GameMode.HideAndSeek
+                || tagPacket.GameMode == GameMode.Sardines
+                || tagPacket.GameMode == GameMode.FreezeTag
+            )
+            { 
+                client.Logger.Info($"Got tag packet: {tagPacket.GameMode} {tagPacket.UpdateType} {tagPacket.IsIt} {tagPacket.Minutes}:{tagPacket.Seconds}");
+                if ((tagPacket.UpdateType & TagPacket.TagUpdate.State) != 0)
+                {
+                    client.Metadata["seeking"] = tagPacket.IsIt;
+                }
+                if ((tagPacket.UpdateType & TagPacket.TagUpdate.Time) != 0)
+                {
+                    client.Metadata["time"] = new Time(tagPacket.Minutes, tagPacket.Seconds);
+                }
+            }
+            else
+            {
+                client.Logger.Info($"Got tag packet: {tagPacket.GameMode} {(byte) tagPacket.UpdateType}");
+                client.Metadata["seeking"] = null;
+                client.Metadata["time"] = null;
+            }
+            client.Metadata["gameMode"] = tagPacket.GameMode;
+            break;
+        }
+
+        case CapturePacket capturePacket: {
+            client.Logger.Info($"Got capture packet: {capturePacket.ModelName}");
+            client.Metadata["lastCapturePacket"] = capturePacket;
+            break;
+        }
+
+        case CostumePacket costumePacket: {
+            client.Logger.Info($"Got costume packet: {costumePacket.BodyName}, {costumePacket.CapName}");
+            client.Metadata["lastCostumePacket"] = costumePacket;
+            client.CurrentCostume = costumePacket;
+#pragma warning disable CS4014
+            ClientSyncShineBag(client); //no point logging since entire def has try/catch
+#pragma warning restore CS4014
+            client.Metadata["loadedSave"] = true;
+            break;
+        }
+
+        case ShinePacket shinePacket: {
+            if (!Settings.Instance.Shines.Enabled) return false;
+            if (Settings.Instance.Shines.Excluded.Contains(shinePacket.ShineId))
+            {
+                client.Logger.Info($"Got moon {shinePacket.ShineId} (excluded)");
+                return false;
+            }
+            if (client.Metadata["loadedSave"] is false) break;
+            
+            ConcurrentBag<int> playerBag = (ConcurrentBag<int>)client.Metadata["shineBag"]!;
+            shineBag.Add(shinePacket.ShineId);
+            if (playerBag.Contains(shinePacket.ShineId)) break;
+            client.Logger.Info($"Got moon {shinePacket.ShineId}");
+            playerBag.Add(shinePacket.ShineId);
+            SyncShineBag();
+            break;
+        }
+
+        case PlayerPacket playerPacket: {
+            client.Metadata["lastPlayerPacket"] = playerPacket;
+            // flip for all
+            if (Settings.Instance.Flip.Enabled
+                && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Others
+                && Settings.Instance.Flip.Players.Contains(client.Id)
+            ) {
+                FlipPlayer(client, ref playerPacket);
+#pragma warning disable CS4014
+                server.Broadcast(playerPacket, client).ContinueWith(LogError);
+#pragma warning restore CS4014
+                return false;
+            }
+            // flip only for specific clients
+            if (Settings.Instance.Flip.Enabled
+                && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Self
+                && !Settings.Instance.Flip.Players.Contains(client.Id)
+            ) {
+                server.BroadcastReplace(playerPacket, client, (from, to, sp) =>
+                {
+                    if (Settings.Instance.Flip.Players.Contains(to.Id))
+                    {
+                        FlipPlayer(client, ref sp);
+                    }
+#pragma warning disable CS4014
+                    to.Send(sp, from).ContinueWith(LogError);
+#pragma warning restore CS4014
+                });
+                return false;
+            }
+            break;
+        }
+        
+        case CheckpointPacket checkpointPacket: {
+            client.Logger.Info($"Got checkpoint: {Util.CheckpointNames[checkpointPacket.ObjId]}");
+            break;
+        }
+        
+        case MoonRockPacket moonRockPacket: {
+            client.Logger.Info($"Hit Moon Rock in {Util.KingdomNames[moonRockPacket.WorldId]}");
+            break;
+        }
+        
+        case CoinCollectCollPacket coinCollectCollPacket: {
+            client.Logger.Info($"Got reginal coin in {Util.KingdomNames[coinCollectCollPacket.WorldId]}");
+            break;
+        }
+        
+        case GameStartPacket: {
+            client.Logger.Info("Started");
+            break;
+        }
     }
     return true; // Broadcast packet to all other clients
 };
 
-(HashSet<string> failToFind, HashSet<Client> toActUpon, List<(string arg, IEnumerable<string> amb)> ambig) MultiUserCommandHelper(string[] args)
-{
+(HashSet<string> failToFind, HashSet<Client> toActUpon, List<(string arg, IEnumerable<string> amb)> ambig) MultiUserCommandHelper(string[] args) {
     HashSet<string> failToFind = new();
     HashSet<Client> toActUpon;
     List<(string arg, IEnumerable<string> amb)> ambig = new();
@@ -352,47 +327,37 @@ server.PacketHandler = (c, p) =>
     else
     {
         toActUpon = args[0] == "!*" ? new(server.Clients.Where(c => c.Connected)) : new();
-        for (int i = (args[0] == "!*" ? 1 : 0); i < args.Length; i++)
-        {
+        for (int i = (args[0] == "!*" ? 1 : 0); i < args.Length; i++) {
             string arg = args[i];
             var search = server.Clients.Where(c => c.Connected && (
                 c.Name.ToLower().StartsWith(arg.ToLower())
                 || (Guid.TryParse(arg, out Guid res) && res == c.Id)
                 || (IPAddress.TryParse(arg, out IPAddress? ip) && ip.Equals(((IPEndPoint)c.Socket!.RemoteEndPoint!).Address))
             )).ToList();
-            if (!search.Any())
-            {
+            if (!search.Any()) {
                 failToFind.Add(arg); //none found
             }
-            else if (search.Count() > 1)
-            {
+            else if (search.Count > 1) {
                 Client? exact = search.FirstOrDefault(x => x.Name == arg);
-                if (!ReferenceEquals(exact, null))
-                {
+                if (!ReferenceEquals(exact, null)) {
                     //even though multiple matches, since exact match, it isn't ambiguous
-                    if (args[0] == "!*")
-                    {
+                    if (args[0] == "!*") {
                         toActUpon.Remove(exact);
                     }
-                    else
-                    {
+                    else {
                         toActUpon.Add(exact);
                     }
                 }
-                else
-                {
-                    if (ambig.All(x => x.arg != arg))
-                    {
+                else {
+                    if (ambig.All(x => x.arg != arg)) {
                         ambig.Add((arg, search.Select(x => x.Name))); //more than one match
                     }
-                    foreach (var rem in search)
-                    { //already a list, no need to copy again
+                    foreach (var rem in search) { //already a list, no need to copy again
                         toActUpon.Remove(rem);
                     }
                 }
             }
-            else
-            {
+            else {
                 //only one match, so autocomplete
                 if (args[0] == "!*")
                 {
@@ -407,9 +372,9 @@ server.PacketHandler = (c, p) =>
     }
     return (failToFind, toActUpon, ambig);
 }
+
 #region RegisterComands
-CommandHandler.RegisterCommand("rejoin", args =>
-{
+CommandHandler.RegisterCommand("rejoin", args => {
     if (args.Length == 0)
     {
         return "Usage: rejoin <* | !* (usernames to not rejoin...) | (usernames to rejoin...)>";
@@ -436,8 +401,7 @@ CommandHandler.RegisterCommand("rejoin", args =>
     return sb.ToString();
 });
 
-CommandHandler.RegisterCommand("crash", args =>
-{
+CommandHandler.RegisterCommand("crash", args => {
     if (args.Length == 0)
     {
         return "Usage: crash <* | !* (usernames to not crash...) | (usernames to crash...)>";
@@ -467,17 +431,14 @@ CommandHandler.RegisterCommand("crash", args =>
 CommandHandler.RegisterCommand("ban", args => BanLists.HandleBanCommand(args, MultiUserCommandHelper));
 CommandHandler.RegisterCommand("unban", args => BanLists.HandleUnbanCommand(args));
 
-CommandHandler.RegisterCommand("send", args =>
-{
-    const string optionUsage = "Usage: send <stage> <id> <scenario[-1..127]> <player/*>";
-    if (args.Length < 4)
-    {
+CommandHandler.RegisterCommand("send", args => {
+    const string optionUsage = "Usage: send <stage> <id> <scenario[-1..127]> <* | !* (players to exclude) | (players to send)>";
+    if (args.Length < 4) {
         return optionUsage;
     }
 
     string? stage = Stages.Input2Stage(args[0]);
-    if (stage == null)
-    {
+    if (stage == null) {
         return "Invalid Stage Name! ```" + Stages.KingdomAliasMapping() + "```";
     }
 
@@ -485,12 +446,8 @@ CommandHandler.RegisterCommand("send", args =>
 
     if (!sbyte.TryParse(args[2], out sbyte scenario) || scenario < -1)
         return $"Invalid scenario number {args[2]} (range: [-1 to 127])";
-    Client[] players = args[3] == "*"
-        ? server.Clients.Where(c => c.Connected).ToArray()
-        : server.Clients.Where(c =>
-                c.Connected
-                && args[3..].Any(x => c.Name.StartsWith(x) || (Guid.TryParse(x, out Guid result) && result == c.Id)))
-            .ToArray();
+
+    Client[] players = MultiUserCommandHelper(args[3..]).toActUpon.ToArray();
     Parallel.ForEachAsync(players, async (c, _) =>
     {
         await c.Send(new ChangeStagePacket
@@ -504,8 +461,7 @@ CommandHandler.RegisterCommand("send", args =>
     return $"Sent players to {stage}:{scenario}";
 });
 
-CommandHandler.RegisterCommand("sendall", args =>
-{
+CommandHandler.RegisterCommand("sendall", args => {
     const string optionUsage = "Usage: sendall <stage>";
     if (args.Length < 1)
     {
@@ -534,26 +490,21 @@ CommandHandler.RegisterCommand("sendall", args =>
     return $"Sent players to {stage}:{-1}";
 });
 
-CommandHandler.RegisterCommand("scenario", args =>
-{
+// Unnecessary in SMOO+, kept for compatibility
+CommandHandler.RegisterCommand("scenario", args => {
     const string optionUsage = "Valid options: merge [true/false]";
     if (args.Length < 1)
         return optionUsage;
-    switch (args[0])
-    {
-        case "merge" when args.Length == 2:
-            {
-                if (bool.TryParse(args[1], out bool result))
-                {
+    switch (args[0]) {
+        case "merge" when args.Length == 2: {
+                if (bool.TryParse(args[1], out bool result)) {
                     Settings.Instance.Scenario.MergeEnabled = result;
                     Settings.SaveSettings();
                     return result ? "Enabled scenario merge" : "Disabled scenario merge";
                 }
-
                 return optionUsage;
             }
-        case "merge" when args.Length == 1:
-            {
+        case "merge" when args.Length == 1: {
                 return $"Scenario merging is {Settings.Instance.Scenario.MergeEnabled}";
             }
         default:
@@ -561,8 +512,8 @@ CommandHandler.RegisterCommand("scenario", args =>
     }
 });
 
-CommandHandler.RegisterCommand("tag", args =>
-{
+// Not in SMOO+, kept for compatibility 
+CommandHandler.RegisterCommand("tag", args => {
     const string optionUsage =
         "Valid options:\n\ttime <user/*> <freeze/hns/sardine> <minutes[0-65535]> <seconds[0-59]>\n\tseeking <user/*> <freeze/hns/sardine> <true/false>\n\tstart <freeze/hns/sardine> <time> <seekers>";
     if (args.Length < 3)
@@ -675,111 +626,127 @@ CommandHandler.RegisterCommand("tag", args =>
     }
 });
 
-CommandHandler.RegisterCommand("maxplayers", args =>
-{
+CommandHandler.RegisterCommand("maxplayers", args => {
     const string optionUsage = "Valid usage: maxplayers <playercount>";
-    if (args.Length != 1) return optionUsage;
-    if (!ushort.TryParse(args[0], out ushort maxPlayers)) return optionUsage;
+    
+    if (args.Length == 0) return $"Max player count: {Settings.Instance.Server.MaxPlayers}";
+    if (args.Length > 1) return optionUsage;
+    if (!ushort.TryParse(args[0], out ushort maxPlayers)) return "Not a valid number";
+    
     Settings.Instance.Server.MaxPlayers = maxPlayers;
     Settings.SaveSettings();
+    
     foreach (Client client in server.Clients)
         client.Dispose(); // reconnect all players
+    
     return $"Saved and set max players to {maxPlayers}";
 });
-CommandHandler.RegisterCommand("list",
-    _ => $"List: {string.Join("\n\t", server.Clients.Where(x => x.Connected).Select(x => $"{x.Name} ({x.Id})"))}");
 
-CommandHandler.RegisterCommand("flip", args =>
-{
+CommandHandler.RegisterCommand("list",
+    _ => $"List:\n\t {string.Join("\n\t", server.Clients.Where(x => x.Connected).Select(x => $"{x.Name} ({x.Id})"))}");
+
+// why does this exist
+CommandHandler.RegisterCommand("flip", args => {
     const string optionUsage =
         "Valid options: \n\tlist\n\tadd <user id>\n\tremove <user id>\n\tset <true/false>\n\tpov <both/self/others>";
     if (args.Length < 1)
         return optionUsage;
-    switch (args[0])
-    {
+    switch (args[0]) {
         case "list" when args.Length == 1:
             return "User ids: " + string.Join(", ", Settings.Instance.Flip.Players.ToList());
-        case "add" when args.Length == 2:
+        case "add" when args.Length == 2: {
+            if (Guid.TryParse(args[1], out Guid result))
             {
-                if (Guid.TryParse(args[1], out Guid result))
-                {
-                    Settings.Instance.Flip.Players.Add(result);
-                    Settings.SaveSettings();
-                    return $"Added {result} to flipped players";
-                }
-
-                return $"Invalid user id {args[1]}";
+                Settings.Instance.Flip.Players.Add(result);
+                Settings.SaveSettings();
+                return $"Added {result} to flipped players";
             }
-        case "remove" when args.Length == 2:
+
+            return $"Invalid user id {args[1]}";
+        }
+        
+        case "remove" when args.Length == 2: {
+            if (Guid.TryParse(args[1], out Guid result))
             {
-                if (Guid.TryParse(args[1], out Guid result))
-                {
-                    string output = Settings.Instance.Flip.Players.Remove(result)
-                        ? $"Removed {result} to flipped players"
-                        : $"User {result} wasn't in the flipped players list";
-                    Settings.SaveSettings();
-                    return output;
-                }
-
-                return $"Invalid user id {args[1]}";
+                string output = Settings.Instance.Flip.Players.Remove(result)
+                    ? $"Removed {result} to flipped players"
+                    : $"User {result} wasn't in the flipped players list";
+                Settings.SaveSettings();
+                return output;
             }
-        case "set" when args.Length == 2:
+
+            return $"Invalid user id {args[1]}";
+        }
+        case "set" when args.Length == 2: {
+            if (bool.TryParse(args[1], out bool result))
             {
-                if (bool.TryParse(args[1], out bool result))
-                {
-                    Settings.Instance.Flip.Enabled = result;
-                    Settings.SaveSettings();
-                    return result ? "Enabled player flipping" : "Disabled player flipping";
-                }
-
-                return optionUsage;
+                Settings.Instance.Flip.Enabled = result;
+                Settings.SaveSettings();
+                return result ? "Enabled player flipping" : "Disabled player flipping";
             }
-        case "pov" when args.Length == 2:
+
+            return optionUsage;
+        }
+        
+        case "pov" when args.Length == 2: {
+            if (Enum.TryParse(args[1], true, out FlipOptions result))
             {
-                if (Enum.TryParse(args[1], true, out FlipOptions result))
-                {
-                    Settings.Instance.Flip.Pov = result;
-                    Settings.SaveSettings();
-                    return $"Point of view set to {result}";
-                }
-
-                return optionUsage;
+                Settings.Instance.Flip.Pov = result;
+                Settings.SaveSettings();
+                return $"Point of view set to {result}";
             }
+
+            return optionUsage;
+        }
         default:
             return optionUsage;
     }
 });
 
-CommandHandler.RegisterCommand("shine", args =>
-{
-    const string optionUsage = "Valid options: list, clear, sync, send, set, include, exclude";
+CommandHandler.RegisterCommand("shine", args => {
+    const string optionUsage = "Valid options: list, clear, sync, fsync, send, set, include, exclude";
     if (args.Length < 1)
         return optionUsage;
-    switch (args[0])
-    {
-        case "list" when args.Length == 1:
+    switch (args[0]) {
+        case "list": {
+            if (args.Length != 1) return "Usage: shine list";
             return $"Shines: {string.Join(", ", shineBag)}" + (
                 Settings.Instance.Shines.Excluded.Any()
-                ? "\nExcluded Shines: " + string.Join(", ", Settings.Instance.Shines.Excluded)
-                : ""
+                    ? "\nExcluded Shines: " + string.Join(", ", Settings.Instance.Shines.Excluded)
+                    : ""
             );
-        case "clear" when args.Length == 1:
+        }
+        
+        case "clear": {
+            if (args.Length != 1) return "Usage: shine clear";
             shineBag.Clear();
             Task.Run(PersistShines);
 
             foreach (ConcurrentBag<int> playerBag in server.Clients.Select(serverClient =>
-                (ConcurrentBag<int>)serverClient.Metadata["shineSync"]!)) playerBag.Clear();
+                         (ConcurrentBag<int>)serverClient.Metadata["shineBag"]!)) playerBag.Clear();
 
             return "Cleared shine bags";
-        case "sync" when args.Length == 1:
+        }
+        
+        case "sync": {
+            if (args.Length != 1) return "Usage: shine sync";
             SyncShineBag();
             return "Synced shine bag automatically";
-        case "send" when args.Length >= 3:
+        }
+
+        case "fsync": {
+            if (args.Length != 1) return "Usage: shine fsync";
+            SyncShineBag(true);
+            return "Synced shine bag forcibly";
+        }
+        
+        case "send": {
+            if (args.Length < 2) return "Usage: shine send <id> <* | !* (players to exclude) | (players to include)>";
             if (int.TryParse(args[1], out int id))
             {
-                Client[] players = args[2] == "*"
+                Client[] players = (args.Length == 2)
                     ? server.Clients.Where(c => c.Connected).ToArray()
-                    : server.Clients.Where(c => c.Connected && args[3..].Contains(c.Name)).ToArray();
+                    : MultiUserCommandHelper(args[2..]).toActUpon.ToArray();
                 Parallel.ForEachAsync(players, async (c, _) =>
                 {
                     await c.Send(new ShinePacket
@@ -789,92 +756,83 @@ CommandHandler.RegisterCommand("shine", args =>
                 }).Wait();
                 return $"Sent Shine Num {id}";
             }
+            return "Shine ID invalid";
+            
+        }
+        
+        case "set": {
+            if (args.Length != 2) {
+                return "Usage: shine set <true/false>";
+            }
+            if (bool.TryParse(args[1], out bool result)) {
+                Settings.Instance.Shines.Enabled = result;
+                Settings.SaveSettings();
+                return result ? "Enabled shine sync" : "Disabled shine sync";
+            }
 
             return optionUsage;
-        case "set" when args.Length == 2:
-            {
-                if (bool.TryParse(args[1], out bool result))
+        }
+        
+        case "exclude":
+        case "include": {
+            if (args.Length != 2) return $"Usage: shine {args[0]} <id>";
+            if (int.TryParse(args[1], out int sid)) {
+                if (args[0] == "exclude")
                 {
-                    Settings.Instance.Shines.Enabled = result;
+                    Settings.Instance.Shines.Excluded.Add(sid);
                     Settings.SaveSettings();
-                    return result ? "Enabled shine sync" : "Disabled shine sync";
+                    return $"Exclude shine {sid} from syncing.";
                 }
-
-                return optionUsage;
+                
+                Settings.Instance.Shines.Excluded.Remove(sid);
+                Settings.SaveSettings();
+                return $"No longer exclude shine {sid} from syncing.";
+                
             }
-        case "exclude" when args.Length == 2:
-        case "include" when args.Length == 2:
-            {
-                if (int.TryParse(args[1], out int sid))
-                {
-                    if (args[0] == "exclude")
-                    {
-                        Settings.Instance.Shines.Excluded.Add(sid);
-                        Settings.SaveSettings();
-                        return $"Exclude shine {sid} from syncing.";
-                    }
-                    else
-                    {
-                        Settings.Instance.Shines.Excluded.Remove(sid);
-                        Settings.SaveSettings();
-                        return $"No longer exclude shine {sid} from syncing.";
-                    }
-                }
-                return optionUsage;
-            }
+            return "Shine ID invalid";
+        }
+        
         default:
             return optionUsage;
     }
 });
 
 
-CommandHandler.RegisterCommand("loadsettings", _ =>
-{
+CommandHandler.RegisterCommand("loadsettings", _ => {
     Settings.LoadSettings();
     return "Loaded settings.json";
 });
 
-CommandHandler.RegisterCommand("restartserver", args =>
-{
-
-    if (args.Length != 0)
-    {
-        return "Usage: restartserver (no arguments)";
+CommandHandler.RegisterCommand("restartserver", args =>{
+    if (args.Length != 0) {
+        return "Usage: restartserver";
     }
-    else
-    {
-        consoleLogger.Info("Received restartserver command");
-        cts.Cancel();
-        return "Restarting...";
-    }
+    
+    consoleLogger.Info("Received restartserver command");
+    cts.Cancel();
+    return "Restarting...";
+    
 });
-
 #endregion
-Console.CancelKeyPress += (_, e) =>
-{
+
+Console.CancelKeyPress += (_, e) => {
     e.Cancel = true;
     consoleLogger.Info("Received Ctrl+C");
     cts.Cancel();
 };
 
-CommandHandler.RegisterCommandAliases(_ =>
-{
+CommandHandler.RegisterCommandAliases(_ => {
     cts.Cancel();
     return "Shutting down";
 }, "exit", "quit", "q");
 
 #pragma warning disable CS4014
-Task.Run(() =>
-{
-    Stages.LoadAllCustomStagesFromMods();
+Task.Run(() => {
     consoleLogger.Info("Run help command for valid commands.");
-    while (true)
-    {
+    while (true) {
         string? text = Console.ReadLine();
-        if (text != null)
-        {
-            foreach (string returnString in CommandHandler.GetResult(text).ReturnStrings)
-            {
+        if (text != null) {
+            foreach (string returnString in CommandHandler.GetResult(text).ReturnStrings) {
                 consoleLogger.Info(returnString);
             }
         }
@@ -883,7 +841,6 @@ Task.Run(() =>
 #pragma warning restore CS4014
 
 #region WebInterface
-// Webinterface nur starten, wenn aktiviert
 Task? webTask = null;
 if(false)// (Settings.Instance.WebInterface.Enabled)
 {
@@ -1317,10 +1274,9 @@ if(false)// (Settings.Instance.WebInterface.Enabled)
 }
 
 #endregion
-// Spielserver separat starten
+
 var gameTask = server.Listen(cts.Token);
 
-// Auf beide Tasks warten
 if (webTask != null)
     await Task.WhenAll(webTask, gameTask);
 else

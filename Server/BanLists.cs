@@ -183,52 +183,62 @@ public static class BanLists {
             default:
                 return "Usage: ban {list|enable|disable|player|profile|ip|stage} ...";
 
-            case "list":
+            case "list": {
                 if (args.Length != 0) {
                     return "Usage: ban list";
                 }
+
                 StringBuilder list = new StringBuilder();
                 list.Append("BanList: " + (Enabled ? "enabled" : "disabled"));
 
-                if (IpSet.Count > 0) {
+                if (IpSet.Count > 0)
+                {
                     list.Append("\nBanned IPv4 addresses:\n- ");
                     list.Append(string.Join("\n- ", IpSet));
                 }
 
-                if (Profiles.Count > 0) {
+                if (Profiles.Count > 0)
+                {
                     list.Append("\nBanned profile IDs:\n- ");
                     list.Append(string.Join("\n- ", Profiles));
                 }
 
-                if (Stages.Count > 0) {
+                if (Stages.Count > 0)
+                {
                     list.Append("\nBanned stages:\n- ");
                     list.Append(string.Join("\n- ", Stages));
                 }
 
-                if (GameModes.Count > 0) {
+                if (GameModes.Count > 0)
+                {
                     list.Append("\nBanned gamemodes:\n- ");
                     list.Append(string.Join("\n- ", GameModes.Select(x => (GameMode)x)));
                 }
 
                 return list.ToString();
-
-            case "enable":
+            }
+            
+            case "enable": {
                 if (args.Length != 0) {
                     return "Usage: ban enable";
                 }
+
                 Enabled = true;
                 Save();
                 return "BanList enabled.";
+            }
 
-            case "disable":
+            case "disable": {
                 if (args.Length != 0) {
                     return "Usage: ban disable";
                 }
+
                 Enabled = false;
                 Save();
                 return "BanList disabled.";
+            }
 
-            case "player":
+            case "player": {
                 if (args.Length == 0) {
                     return "Usage: ban player <* | !* (usernames to not ban...) | (usernames to ban...)>";
                 }
@@ -236,11 +246,18 @@ public static class BanLists {
                 var res = much(args);
 
                 StringBuilder sb = new StringBuilder();
-                sb.Append(res.toActUpon.Count  > 0 ? "Banned players: " + string.Join(", ", res.toActUpon.Select(x => $"\"{x.Name}\"")) : "");
-                sb.Append(res.failToFind.Count > 0 ? "\nFailed to find matches for: " + string.Join(", ", res.failToFind.Select(x => $"\"{x.ToLower()}\"")) : "");
+                sb.Append(res.toActUpon.Count > 0
+                    ? "Banned players: " + string.Join(", ", res.toActUpon.Select(x => $"\"{x.Name}\""))
+                    : "");
+                sb.Append(res.failToFind.Count > 0
+                    ? "\nFailed to find matches for: " +
+                      string.Join(", ", res.failToFind.Select(x => $"\"{x.ToLower()}\""))
+                    : "");
                 if (res.ambig.Count > 0) {
-                    res.ambig.ForEach(x => {
-                        sb.Append($"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(a => $"\"{a}\""))}");
+                    res.ambig.ForEach(x =>
+                    {
+                        sb.Append(
+                            $"\nAmbiguous for \"{x.arg}\": {string.Join(", ", x.amb.Select(a => $"\"{a}\""))}");
                     });
                 }
 
@@ -252,72 +269,90 @@ public static class BanLists {
 
                 Save();
                 return sb.ToString();
+            }
 
-            case "profile":
+            case "profile": {
                 if (args.Length != 1) {
                     return "Usage: ban profile <profile-id>";
                 }
+
                 if (!Guid.TryParse(args[0], out Guid id)) {
                     return "Invalid profile ID value!";
                 }
+
                 if (IsProfileBanned(id)) {
-                    return "Profile " + id.ToString() + " is already banned.";
+                    return "Profile " + id + " is already banned.";
                 }
+
                 BanProfile(id);
                 CrashMultiple(args, much);
                 Save();
-                return "Banned profile: " + id.ToString();
+                return "Banned profile: " + id;
+            }
 
-            case "ip":
+            case "ip": {
                 if (args.Length != 1) {
                     return "Usage: ban ip <ipv4-address>";
                 }
+
                 if (!IsIPv4(args[0])) {
                     return "Invalid IPv4 address!";
                 }
+
                 if (IsIPv4Banned(args[0])) {
                     return "IP " + args[0] + " is already banned.";
                 }
+
                 BanIPv4(args[0]);
                 CrashMultiple(args, much);
                 Save();
                 return "Banned ip: " + args[0];
+            }
 
-            case "stage":
+            case "stage": {
                 if (args.Length != 1) {
                     return "Usage: ban stage <stage-name>";
                 }
+
                 string? stage = Shared.Stages.Input2Stage(args[0]);
                 if (stage == null) {
                     return "Invalid stage name!";
                 }
+
                 if (IsStageBanned(stage)) {
                     return "Stage " + stage + " is already banned.";
                 }
+
                 var stages = Shared.Stages
-                    .StagesByInput(args[0])
-                    .Where(s => !IsStageBanned(s))
-                    .ToList()
-                ;
+                        .StagesByInput(args[0])
+                        .Where(s => !IsStageBanned(s))
+                        .ToList();
+                
                 foreach (string s in stages) {
                     BanStage(s);
                 }
+
                 Save();
                 return "Banned stage: " + string.Join(", ", stages);
+            }
 
-            case "gamemode":
+            case "gamemode": {
                 if (args.Length != 1) {
                     return "Usage: ban gamemode <gamemode>";
                 }
+
                 if (!Enum.TryParse(args[0], out GameMode gameMode)) {
                     return "Invalid gamemode value!";
                 }
+
                 if (IsGameModeBanned(gameMode)) {
                     return "Gamemode " + gameMode + " is already banned.";
                 }
+
                 BanGameMode(gameMode);
                 Save();
                 return "Banned gamemode: " + gameMode;
+            }
         }
     }
 
@@ -334,54 +369,65 @@ public static class BanLists {
             default:
                 return "Usage: unban {profile|ip|stage} <value>";
 
-            case "profile":
+            case "profile": {
                 if (!Guid.TryParse(val, out Guid id)) {
                     return "Invalid profile ID value!";
                 }
+
                 if (!IsProfileBanned(id)) {
-                    return "Profile " + id.ToString() + " is not banned.";
+                    return "Profile " + id + " is not banned.";
                 }
+
                 UnbanProfile(id);
                 Save();
-                return "Unbanned profile: " + id.ToString();
+                return "Unbanned profile: " + id;
+            }
 
-            case "ip":
+            case "ip": {
                 if (!IsIPv4(val)) {
                     return "Invalid IPv4 address!";
                 }
+
                 if (!IsIPv4Banned(val)) {
                     return "IP " + val + " is not banned.";
                 }
+
                 UnbanIPv4(val);
                 Save();
                 return "Unbanned ip: " + val;
+            }
 
-            case "stage":
+            case "stage": {
                 string stage = Shared.Stages.Input2Stage(val) ?? val;
                 if (!IsStageBanned(stage)) {
                     return "Stage " + stage + " is not banned.";
                 }
+
                 var stages = Shared.Stages
-                    .StagesByInput(val)
-                    .Where(IsStageBanned)
-                    .ToList()
-                ;
+                        .StagesByInput(val)
+                        .Where(IsStageBanned)
+                        .ToList();
                 foreach (string s in stages) {
                     UnbanStage(s);
                 }
+
                 Save();
                 return "Unbanned stage: " + string.Join(", ", stages);
+            }
 
-            case "gamemode":
+            case "gamemode": {
                 if (!Enum.TryParse(val, out GameMode gameMode)) {
                     return "Invalid gamemode value!";
                 }
+
                 if (!IsGameModeBanned(gameMode)) {
                     return "Gamemode " + gameMode + " is not banned.";
                 }
+
                 UnbanGameMode(gameMode);
                 Save();
                 return "Unbanned gamemode: " + gameMode;
+            }
         }
     }
 }
