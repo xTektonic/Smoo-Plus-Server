@@ -68,7 +68,7 @@ public class Client : IDisposable
             }
             Server.FillPacket(new PacketHeader
             {
-                Id = sender?.Id ?? Id,
+                Id = sender?.Id ?? Guid.Empty,
                 Type = packetAttribute.Type,
                 PacketSize = packet.Size
             }, packet, memory.Memory);
