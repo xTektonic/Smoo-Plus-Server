@@ -4,11 +4,6 @@
     "Port": 1028,
     "MaxPlayers": 8
   },
-  "Flip": {
-    "Enabled": true,
-    "Players": [],
-    "Pov": "both"
-  },
   "Scenario": {
     "MergeEnabled": true
   },
@@ -27,9 +22,7 @@
   },
   "Shines": {
     "Enabled": true,
-    "Excluded": [
-      496
-    ],
+    "Excluded": [],
     "ClearOnNewSaves": false
   },
   "PersistShines": {

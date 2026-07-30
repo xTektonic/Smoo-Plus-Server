@@ -94,14 +94,6 @@ Timer timer = new Timer(120000) { // 2 minutes
 };
 timer.Elapsed += (_, _) => { SyncShineBag(); };
 
-float MarioSize(bool is2d) => is2d ? 180 : 160;
-
-void FlipPlayer(Client c, ref PlayerPacket pp) {
-    pp.Position += Vector3.UnitY * MarioSize((bool)c.Metadata["2d"]!);
-    pp.Rotation *= Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationX(MathF.PI))
-                   * Quaternion.CreateFromRotationMatrix(Matrix4x4.CreateRotationY(MathF.PI));
-}
-
 void LogError(Task x) {
     if (x.Exception != null)
     {
@@ -262,34 +254,6 @@ server.PacketHandler = (client, packet) => {
 
         case PlayerPacket playerPacket: {
             client.Metadata["lastPlayerPacket"] = playerPacket;
-            // flip for all
-            if (Settings.Instance.Flip.Enabled
-                && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Others
-                && Settings.Instance.Flip.Players.Contains(client.Id)
-            ) {
-                FlipPlayer(client, ref playerPacket);
-#pragma warning disable CS4014
-                server.Broadcast(playerPacket, client).ContinueWith(LogError);
-#pragma warning restore CS4014
-                return false;
-            }
-            // flip only for specific clients
-            if (Settings.Instance.Flip.Enabled
-                && Settings.Instance.Flip.Pov is FlipOptions.Both or FlipOptions.Self
-                && !Settings.Instance.Flip.Players.Contains(client.Id)
-            ) {
-                server.BroadcastReplace(playerPacket, client, (from, to, sp) =>
-                {
-                    if (Settings.Instance.Flip.Players.Contains(to.Id))
-                    {
-                        FlipPlayer(client, ref sp);
-                    }
-#pragma warning disable CS4014
-                    to.Send(sp, from).ContinueWith(LogError);
-#pragma warning restore CS4014
-                });
-                return false;
-            }
             break;
         }
         
@@ -645,63 +609,6 @@ CommandHandler.RegisterCommand("maxplayers", args => {
 CommandHandler.RegisterCommand("list",
     _ => $"List:\n\t {string.Join("\n\t", server.Clients.Where(x => x.Connected).Select(x => $"{x.Name} ({x.Id})"))}");
 
-// why does this exist
-CommandHandler.RegisterCommand("flip", args => {
-    const string optionUsage =
-        "Valid options: \n\tlist\n\tadd <user id>\n\tremove <user id>\n\tset <true/false>\n\tpov <both/self/others>";
-    if (args.Length < 1)
-        return optionUsage;
-    switch (args[0]) {
-        case "list" when args.Length == 1:
-            return "User ids: " + string.Join(", ", Settings.Instance.Flip.Players.ToList());
-        case "add" when args.Length == 2: {
-            if (Guid.TryParse(args[1], out Guid result))
-            {
-                Settings.Instance.Flip.Players.Add(result);
-                Settings.SaveSettings();
-                return $"Added {result} to flipped players";
-            }
-
-            return $"Invalid user id {args[1]}";
-        }
-        
-        case "remove" when args.Length == 2: {
-            if (Guid.TryParse(args[1], out Guid result))
-            {
-                string output = Settings.Instance.Flip.Players.Remove(result)
-                    ? $"Removed {result} to flipped players"
-                    : $"User {result} wasn't in the flipped players list";
-                Settings.SaveSettings();
-                return output;
-            }
-
-            return $"Invalid user id {args[1]}";
-        }
-        case "set" when args.Length == 2: {
-            if (bool.TryParse(args[1], out bool result))
-            {
-                Settings.Instance.Flip.Enabled = result;
-                Settings.SaveSettings();
-                return result ? "Enabled player flipping" : "Disabled player flipping";
-            }
-
-            return optionUsage;
-        }
-        
-        case "pov" when args.Length == 2: {
-            if (Enum.TryParse(args[1], true, out FlipOptions result))
-            {
-                Settings.Instance.Flip.Pov = result;
-                Settings.SaveSettings();
-                return $"Point of view set to {result}";
-            }
-
-            return optionUsage;
-        }
-        default:
-            return optionUsage;
-    }
-});
 
 CommandHandler.RegisterCommand("shine", args => {
     const string optionUsage = "Valid options: list, clear, sync, fsync, send, set, include, exclude";

@@ -151,11 +151,7 @@ namespace Sever
 {
     namespace Server
     {
-        public enum FlipOptions {
-            Both,
-            Self,
-            Others
-        }
+
         public record Time(ushort Minutes, byte Seconds);
     }
 }
