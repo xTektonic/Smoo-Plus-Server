@@ -8,7 +8,7 @@ namespace Server;
 public class DiscordBot {
     private DiscordClient? _discordClient;
     private string? _token;
-    private Settings.DiscordTable Config => Settings.Instance.Discord;
+    private Settings.DiscordTable Config => Settings.Discord;
     private string Prefix => Config.Prefix;
     private readonly Logger _logger = new Logger("Discord");
     private DiscordChannel? _commandChannel;

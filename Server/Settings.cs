@@ -7,20 +7,17 @@ using Shared;
 namespace Server;
 
 public class Settings {
-    public static Settings Instance = new ();
     private static readonly Logger Logger = new ("Settings");
     public static Action? LoadHandler;
-
-    static Settings() {
-        LoadSettings();
-    }
+    
+    private static SettingsData Instance { get; set; } = new();
 
     public static void LoadSettings() {
         bool needSave = false;
         if (File.Exists("settings.json")) {
             string text = File.ReadAllText("settings.json");
             try {
-                Instance = JsonConvert.DeserializeObject<Settings>(text, new StringEnumConverter(new CamelCaseNamingStrategy())) ?? Instance;
+                Instance = JsonConvert.DeserializeObject<SettingsData>(text, new StringEnumConverter(new CamelCaseNamingStrategy())) ?? Instance;
                 Logger.Info("Loaded settings from settings.json");
             }
             catch (Exception e) {
@@ -44,19 +41,34 @@ public class Settings {
         }
     }
 
-    public ServerTable Server { get; set; } = new();
-    public BanListTable BanList { get; set; } = new();
-    public DiscordTable Discord { get; set; } = new();
-    public ShineTable Shines { get; set; } = new();
-    public JsonApiTable JsonApi { get; set; } = new();
+    public static ServerTable Server => Instance.Server;
+    public static BanListTable BanList => Instance.BanList;
+    public static DiscordTable Discord => Instance.Discord;
+    public static SyncTable Syncing => Instance.Syncing;
+    public static JsonApiTable JsonApi => Instance.JsonApi;
+    
+    public static SettingsData GetSettingsData() => Instance;
 
-    public class ServerTable {
+
+    public class SettingsData
+    {
+        public ServerTable Server { get; set; } = new();
+        public BanListTable BanList { get; set; } = new();
+
+        public DiscordTable Discord { get; set; } = new();
+        public SyncTable Syncing { get; set; } = new();
+        public JsonApiTable JsonApi { get; set; } = new();
+    }
+
+    public class ServerTable
+    {
         public string Address { get; set; } = IPAddress.Any.ToString();
         public ushort Port { get; set; } = 1027;
         public ushort MaxPlayers { get; set; } = 8;
     }
 
-    public class BanListTable {
+    public class BanListTable
+    {
         public bool Enabled { get; set; }
         public ISet<Guid> Players { get; set; } = new SortedSet<Guid>();
         public ISet<string> IpAddresses { get; set; } = new SortedSet<string>();
@@ -72,24 +84,55 @@ public class Settings {
         public string? LogChannel { get; set; } = null;
     }
 
-    public class ShineTable {
-        public bool Enabled { get; set; } = true;
-        public ISet<int> Excluded { get; set; } = new SortedSet<int>();
-        public bool ClearOnNewSaves { get; set; } = false;
-        
-        public class PersistShinesTable
+
+    public class SyncTable
+    {
+        public class ShineTable
         {
-            public bool Enabled { get; set; } = false;
-            public string Filename { get; set; } = "./moons.json";
+            public bool Enabled { get; set; } = true;
+            public bool ClearOnNewSaves { get; set; } = true;
+
+            public class PersistShinesTable
+            {
+                public bool Enabled { get; set; } = false;
+                public string Filename { get; set; } = "./moons.json";
+            }
+
+            public PersistShinesTable PersistShines { get; set; } = new();
         }
-        
-        public PersistShinesTable PersistShines { get; set; } = new();
+
+        public ShineTable Shines { get; set; } = new();
+
+        public class CpTable
+        {
+            public bool Enabled { get; set; } = true;
+            public bool CleanOnNewSaves { get; set; } = true;
+        }
+
+        public CpTable Checkpoints { get; set; } = new();
+
+        public class MrTable
+        {
+            public bool Enabled { get; set; } = true;
+            public bool CleanOnNewSaves { get; set; } = true;
+        }
+
+        public MrTable MoonRocks { get; set; } = new();
+
+        public class CcTable
+        {
+            public bool Enabled { get; set; } = true;
+            public bool CleanOnNewSaves { get; set; } = true;
+        }
+
+        public CcTable Regionals { get; set; } = new();
     }
-    
+
     public class JsonApiTable
     {
         public bool Enabled { get; set; } = false;
         public Dictionary<string, SortedSet<string>> Tokens { get; set; } = new();
     }
+
    
 }

@@ -6,108 +6,23 @@ public static class CommandHandler
 {
     public delegate Response Handler(string[] args);
 
-    public static Dictionary<string, Handler> Handlers = new Dictionary<string, Handler>();
-    public static Dictionary<string, Handler> HiddenHandlers = new Dictionary<string, Handler>();
-    public static Dictionary<string, Handler> MultiWordHandlers = new Dictionary<string, Handler>();
-    public static Dictionary<string, Handler> MultiWordHiddenHandlers = new Dictionary<string, Handler>();
-
-    private static readonly Dictionary<string, string> CommandDescriptions = new()
-    {
-        { "help", "Shows this help message" },
-        { "infCapDive", "Infinite Capbounces" },
-        { "ban", "Ban a player from the server" },
-        { "unban", "Unban a player from the server" },
-        { "rejoin", "Rejoin players to the server" },
-        { "crash", "Crash players on the server" },
-        { "send", "Send a Player to a Sage" },
-        { "sendall", "Send a scenario to all players" },
-        { "scenario", "Merge scenarios (true/false)" },
-        { "tag", "Change Gamemode stuff" },
-        { "maxplayers", "Set maximum Player" },
-        { "list", "List connected players" },
-        { "flip", "Flip a Player" },
-        { "shine", "Shine Sync" },
-        { "loadsettings", "Load server settings from file" },
-        { "restartserver", "Restart the server" },
-        { "exit", "Exit the server application" },
-        { "quit", "Quit the server application" },
-        { "q", "Quit the server application" },
-        { "dscrestart", "Restart the discord bot" },
-        { "message", "Send a message to one or all players" },
-        { "msg", "Send a message to one or all players" },
-        { "sendmessage", "Send a message to one or all players" }
-        
-
-        // { "deinBefehl", "Beschreibung" },
-        // Weitere Kommandos hier ergänzen
-    };
-
-    // Usage-Informationen
-    private static readonly Dictionary<string, string> CommandUsages = new()
-    {
-        { "help", "help" },
-        { "rejoin", "rejoin <* | !* (usernames to not rejoin...) | (usernames to rejoin...)>" },
-        { "crash", "crash <* | !* (usernames to not crash...) | (usernames to crash...)>" },
-        { "ban", "ban <player>" },
-        { "unban", "unban <player>" },
-        { "send", "send <stage> <id> <scenario[-1..127]> <player/*>" },
-        { "sendall", "sendall <stage>" },
-        { "infCapDive", "infCapDive <Player/*> <true/false>" },
-        { "scenario", "scenario merge [true/false]" },
-        { "tag", "tag time <user/*> <minutes[0-65535]> <seconds[0-59]>\ntag seeking <user/*> <true/false>\ntag start <time> <seekers>" },
-        { "maxplayers", "maxplayers <playercount>" },
-        { "list", "list" },
-        { "flip", "flip list\nflip add <user id>\nflip remove <user id>\nflip set <true/false>\nflip pov <both/self/others>" },
-        { "shine", "shine list\nshine clear\nshine sync\nshine send <id> <player/*>\nshine set <true/false>\nshine include <id>\nshine exclude <id>" },
-        { "loadsettings", "loadsettings" },
-        { "restartserver", "restartserver" },
-        { "exit", "exit" },
-        { "quit", "quit" },
-        { "q", "q" },
-        { "dscrestart", "dscrestart" },
-        { "message", "message <player/*/system> <message>" },
-        { "msg", "msg  <player/*/system> <message>" },
-        { "sendmessage", "sendmessage  <player/*/system> <message>" }
-
-        // ...
-    };
-
-    public static IEnumerable<(string Name, string? Description, string? Usage)> GetAllCommands()
-    {
-        foreach (var cmd in Handlers.Keys)
-        {
-            CommandDescriptions.TryGetValue(cmd, out var desc);
-            CommandUsages.TryGetValue(cmd, out var usage);
-            yield return (cmd, desc, usage);
-        }
-    }
+    public static Dictionary<string, Handler> Handlers = new ();
+    public static Dictionary<string, Handler> HiddenHandlers = new ();
+    public static Dictionary<string, Handler> MultiWordHandlers = new ();
+    public static Dictionary<string, Handler> MultiWordHiddenHandlers = new ();
 
     static CommandHandler()
     {
         RegisterCommand("help", _ =>
         {
             var sb = new StringBuilder();
-            sb.AppendLine("Available commands:\n");
-            const int commandWidth = 20;
-            const int descriptionWidth = 40;
-            const int usageWidth = 40;
-            // Passe die Spaltenbreiten an (z.B. 20, 32, 40)
-            sb.AppendLine($"{"Commands",-commandWidth} | {"Description",-descriptionWidth} | {"Usage",-usageWidth}");
-            sb.AppendLine(new string('-', commandWidth) + "-|-" + new string('-', descriptionWidth) + "-|-" + new string('-', usageWidth));
-            foreach (var cmd in Handlers.Keys.OrderBy(k => k))
+            sb.AppendLine("Available commands:");
+
+            foreach (var cmd in Handlers.Keys)
             {
-                CommandDescriptions.TryGetValue(cmd, out var desc);
-                CommandUsages.TryGetValue(cmd, out var usage);
-
-                desc = string.IsNullOrWhiteSpace(desc) ? "-" : desc;
-                usage = string.IsNullOrWhiteSpace(usage) ? "-" : usage;
-
-                var usageLines = usage.Split('\n');
-                sb.AppendLine($"{cmd,-commandWidth} | {desc.PadRight(descriptionWidth)} | {usageLines[0]}");
-                for (int i = 1; i < usageLines.Length; i++)
-                    sb.AppendLine($"{new string(' ', commandWidth)} | {new string(' ', descriptionWidth)} | {usageLines[i]}");
+                sb.Append($"{cmd}, ");
             }
-            return sb.ToString();
+            return sb.ToString()[..(sb.Length - 2)];
         });
     }
 

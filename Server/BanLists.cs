@@ -10,19 +10,19 @@ using MUCH = Func<string[], (HashSet<string> failToFind, HashSet<Client> toActUp
 
 public static class BanLists {
     public static bool Enabled {
-        get => Settings.Instance.BanList.Enabled;
-        private set => Settings.Instance.BanList.Enabled = value;
+        get => Settings.BanList.Enabled;
+        private set => Settings.BanList.Enabled = value;
     }
 
-    private static ISet<string> IpSet => Settings.Instance.BanList.IpAddresses;
+    private static ISet<string> IpSet => Settings.BanList.IpAddresses;
 
-    private static ISet<Guid> Profiles =>Settings.Instance.BanList.Players;
+    private static ISet<Guid> Profiles =>Settings.BanList.Players;
     
 
-    private static ISet<string> Stages => Settings.Instance.BanList.Stages;
+    private static ISet<string> Stages => Settings.BanList.Stages;
     
 
-    private static ISet<sbyte> GameModes => Settings.Instance.BanList.GameModes;
+    private static ISet<sbyte> GameModes => Settings.BanList.GameModes;
 
 
     private static bool IsIPv4(string str)

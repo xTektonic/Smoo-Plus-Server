@@ -20,7 +20,7 @@ public class Server
     {
         Socket serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         serverSocket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        serverSocket.Bind(new IPEndPoint(IPAddress.Parse(Settings.Instance.Server.Address), Settings.Instance.Server.Port));
+        serverSocket.Bind(new IPEndPoint(IPAddress.Parse(Settings.Server.Address), Settings.Server.Port));
         serverSocket.Listen();
 
         Logger.Info($"Listening on {serverSocket.LocalEndPoint}");
@@ -32,9 +32,9 @@ public class Server
                 Socket socket = token.HasValue ? await serverSocket.AcceptAsync(token.Value) : await serverSocket.AcceptAsync();
                 socket.SetSocketOption(SocketOptionLevel.Tcp, SocketOptionName.NoDelay, true);
 
-                if (!Settings.Instance.JsonApi.Enabled)
+                if (!Settings.JsonApi.Enabled)
                 {
-                    Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
+                    Logger.Error($"Accepted connection for client {socket.RemoteEndPoint}");
                 }
 
                 // start sub thread to handle client
@@ -192,6 +192,8 @@ public class Server
                 // if API Request, close socket after request is handled
                 if (first && await JsonApi.JsonApi.HandleApiRequest(this, socket, header, memory)) { goto close; } 
                 
+                if (first) Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
+                
                 int packetSize = header.PacketSize;
                 
                 Range packetRange = Constants.HeaderSize..(Constants.HeaderSize + packetSize);
@@ -229,10 +231,10 @@ public class Server
                                   (BanLists.IsIPv4Banned(((IPEndPoint)socket.RemoteEndPoint!).Address) ||
                                    BanLists.IsProfileBanned(client.Id));
                     // is the server full?
-                    bool isServerFull = Clients.Count(x => x.Connected) >= Settings.Instance.Server.MaxPlayers;
+                    bool isServerFull = Clients.Count(x => x.Connected) >= Settings.Server.MaxPlayers;
                     
                     if (banned) Logger.Warn($"Ignoring banned player {client.Name} ({client.Id}/{remote})");
-                    else if (isServerFull) client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Instance.Server.MaxPlayers}");
+                    else if (isServerFull) client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Server.MaxPlayers}");
                     
 
                     client.Banned = banned;
@@ -241,7 +243,7 @@ public class Server
                     // send server init (required to crash ignored players later)
                     await client.Send(new InitPacket
                     {
-                        MaxPlayers = (client.Ignored ? (ushort)1 : Settings.Instance.Server.MaxPlayers),
+                        MaxPlayers = (client.Ignored ? (ushort)1 : Settings.Server.MaxPlayers),
                     });
 
                     // don't init or announce an ignored client to other players any further
@@ -257,10 +259,10 @@ public class Server
                     lock (Clients)
                     {
                         // is the server full? (check again, to prevent race conditions)
-                        isServerFull = Clients.Count(x => x.Connected) >= Settings.Instance.Server.MaxPlayers;
+                        isServerFull = Clients.Count(x => x.Connected) >= Settings.Server.MaxPlayers;
                         if (isServerFull)
                         {
-                            client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Instance.Server.MaxPlayers}");
+                            client.Logger.Error($"Ignoring player {client.Name} ({client.Id}/{remote}) as server reached max players of {Settings.Server.MaxPlayers}");
                             client.Ignored = true;
                             memory.Dispose();
                             continue;
@@ -335,7 +337,7 @@ public class Server
                         ConnectPacket connectPacket = new ConnectPacket
                         {
                             ConnectionType = ConnectPacket.ConnectionTypes.FirstConnection, // doesn't matter what it is
-                            MaxPlayers = Settings.Instance.Server.MaxPlayers,
+                            MaxPlayers = Settings.Server.MaxPlayers,
                             ClientName = other.Name,
                         };
                         connectPacket.Serialize(tempBuffer.Memory.Span[Constants.HeaderSize..]);

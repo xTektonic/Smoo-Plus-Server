@@ -22,7 +22,7 @@ public static class JsonApi {
         IMemoryOwner<byte> memory
     ) {
         // check if it is enabled
-        if (!Settings.Instance.JsonApi.Enabled) {
+        if (!Settings.JsonApi.Enabled) {
             return false;
         }
 

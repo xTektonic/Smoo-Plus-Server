@@ -47,7 +47,7 @@ public class ApiRequest {
             return false;
         }
 
-        if (!Settings.Instance.JsonApi.Tokens.ContainsKey(Token)) {
+        if (!Settings.JsonApi.Tokens.ContainsKey(Token)) {
             JsonApi.Logger.Warn($"Invalid Token from {ctx.Socket?.RemoteEndPoint}.");
             return false;
         }

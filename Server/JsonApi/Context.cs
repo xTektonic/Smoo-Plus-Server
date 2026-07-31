@@ -26,7 +26,7 @@ public class Context {
 
     public bool HasPermission(string perm) {
         if (Request == null) { return false; }
-        var permissions = Settings.Instance.JsonApi.Tokens[Request!.Token!];
+        var permissions = Settings.JsonApi.Tokens[Request!.Token!];
         if (permissions.Contains(perm)) { return true; }
 
         string current = perm;
@@ -44,7 +44,7 @@ public class Context {
     public SortedSet<string> Permissions {
         get {
             if (Request == null) { return new SortedSet<string>(); }
-            return Settings.Instance.JsonApi.Tokens[Request!.Token!];
+            return Settings.JsonApi.Tokens[Request!.Token!];
         }
     }
 

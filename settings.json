@@ -20,10 +20,24 @@
   "Shines": {
     "Enabled": true,
     "Excluded": [],
-    "ClearOnNewSaves": false,
+    "ClearOnNewSaves": true,
     "PersistShines": {
       "Enabled": false,
       "Filename": "./moons.json"
+    }
+  },
+  "Syncing": {
+    "Checkpoints": {
+      "Enabled": true,
+      "CleanOnNewSaves": true
+    },
+    "MoonRocks": {
+      "Enabled": true,
+      "CleanOnNewSaves": true
+    },
+    "Regionals": {
+      "Enabled": true,
+      "CleanOnNewSaves": true
     }
   },
 

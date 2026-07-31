@@ -151,7 +151,8 @@ namespace Sever
 {
     namespace Server
     {
-
         public record Time(ushort Minutes, byte Seconds);
+
+        public record CoinCollect(string PlaceId, string Stage, int WorldId);
     }
 }

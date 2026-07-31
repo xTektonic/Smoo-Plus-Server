@@ -24,7 +24,7 @@ public static class ApiRequestStatus {
     private static JsonNode? GetSettings(Context ctx)
     {
         if (ctx.HasPermission("Status/Settings/*")) {
-            JsonNode? fullSettings = JsonSerializer.SerializeToNode(Settings.Instance);
+            JsonNode? fullSettings = JsonSerializer.SerializeToNode(Settings.GetSettingsData());
             if (fullSettings is JsonObject settingsObject) {
                 settingsObject.Remove("JsonApi");
             }
@@ -47,7 +47,7 @@ public static class ApiRequestStatus {
         foreach (string allowedSetting in allowedSettings) {
             string lastKey = "";
             JsonNode? next  = settings;
-            object input = Settings.Instance;
+            object input = Settings.GetSettingsData();
             JsonObject output = settings;
 
             // recursively go down the path

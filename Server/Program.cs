@@ -1,9 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
-using System.Text.Json;
 using Newtonsoft.Json;
-using Server.JsonApi;
 using Server;
 using Sever.Server;
 using Shared;
@@ -13,21 +11,23 @@ using Timer = System.Timers.Timer;
 
 Server.Server server = new Server.Server();
 HashSet<int> shineBag = new HashSet<int>();
+HashSet<CoinCollect> ccBag = new HashSet<CoinCollect>();
+HashSet<string> cpBag = new HashSet<string>();
+HashSet<int> mrBag = new HashSet<int>();
 CancellationTokenSource cts = new CancellationTokenSource();
 Logger consoleLogger = new Logger("Console");
 DiscordBot bot = new DiscordBot();
+bool shouldRun = true;
 await bot.Run();
 
-consoleLogger.Info("Server started!");
-
 async Task PersistShines() {
-    if (!Settings.Instance.Shines.PersistShines.Enabled) {
+    if (!Settings.Syncing.Shines.PersistShines.Enabled) {
         return;
     }
 
     try {
         string shineJson = JsonConvert.SerializeObject(shineBag);
-        await File.WriteAllTextAsync(Settings.Instance.Shines.PersistShines.Filename, shineJson);
+        await File.WriteAllTextAsync(Settings.Syncing.Shines.PersistShines.Filename, shineJson);
     }
     catch (Exception ex) {
         consoleLogger.Error(ex);
@@ -35,11 +35,11 @@ async Task PersistShines() {
 }
 
 async Task LoadShines() {
-    if (!Settings.Instance.Shines.PersistShines.Enabled) {
+    if (!Settings.Syncing.Shines.PersistShines.Enabled) {
         return;
     }
     try {
-        string shineJson = await File.ReadAllTextAsync(Settings.Instance.Shines.PersistShines.Filename);
+        string shineJson = await File.ReadAllTextAsync(Settings.Syncing.Shines.PersistShines.Filename);
         var loadedShines = JsonConvert.DeserializeObject<HashSet<int>>(shineJson);
 
         if (loadedShines is not null) shineBag = loadedShines;
@@ -50,30 +50,91 @@ async Task LoadShines() {
     }
 }
 
-// Load shines table from file
-await LoadShines();
+
 
 server.ClientJoined += (c, _) => {
     c.Metadata["shineBag"] = new ConcurrentBag<int>();
-    c.Metadata["loadedSave"] = false;
+    c.Metadata["ccBag"] = new ConcurrentBag<CoinCollect>();
+    c.Metadata["cpBag"] = new ConcurrentBag<string>();
+    c.Metadata["mrBag"] = new ConcurrentBag<int>();
     c.Metadata["scenario"] = (byte?)0;
     c.Metadata["2d"] = false;
-    c.Metadata["disableShineSync"] = false;
 };
 
 async Task ClientSyncShineBag(Client client, bool force = false) {
-    if (!Settings.Instance.Shines.Enabled) return;
+    if (!Settings.Syncing.Shines.Enabled) return;
     try {
-        if ((bool?)client.Metadata["disableShineSync"] ?? false) return;
         ConcurrentBag<int> clientBag = (ConcurrentBag<int>)(client.Metadata["shineBag"] ??= new ConcurrentBag<int>());
         foreach (int shine in shineBag) {
-            if (!force && (clientBag.Contains(shine) || Settings.Instance.Shines.Excluded.Contains(shine))) continue;
+            if (!force && clientBag.Contains(shine)) continue;
             if (!client.Connected) return;
             await client.Send(new ShinePacket { ShineId = shine });
             clientBag.Add(shine);
         }
     }
     catch {
+        // errors that can happen when sending will crash the server :)
+    }
+}
+
+async Task ClientSyncCcBag(Client client, bool force = false)
+{
+    if (!Settings.Syncing.Regionals.Enabled) return;
+    try {
+        ConcurrentBag<CoinCollect> clientBag = (ConcurrentBag<CoinCollect>)(client.Metadata["ccBag"] ??= new ConcurrentBag<CoinCollect>());
+        foreach (CoinCollect cc in ccBag) {
+            if (!force && clientBag.Contains(cc)) continue;
+            if (!client.Connected) return;
+            await client.Send(new CoinCollectPacket {
+                PlaceId = cc.PlaceId,
+                Stage = cc.Stage,
+                WorldId = cc.WorldId
+            });
+            clientBag.Add(cc);
+        }
+    }
+    catch {
+        // errors that can happen when sending will crash the server :)
+    }
+}
+
+async Task ClientSyncCpBag(Client client, bool force = false) {
+    if (!Settings.Syncing.Checkpoints.Enabled) return;
+    try
+    {
+        ConcurrentBag<string> clientBag = (ConcurrentBag<string>)(client.Metadata["cpBag"] ??= new ConcurrentBag<string>());
+        foreach (string cp in cpBag)
+        {
+            if (!force && clientBag.Contains(cp)) continue;
+            if (!client.Connected) return;
+            await client.Send(new CheckpointPacket {
+                ObjId = cp
+            });
+            clientBag.Add(cp);
+        }
+    }
+    catch
+    {
+        // errors that can happen when sending will crash the server :)
+    }
+}
+
+async Task ClientSyncMrBag(Client client, bool force = false)
+{
+    if (!Settings.Syncing.MoonRocks.Enabled) return;
+    try
+    {
+        ConcurrentBag<int> clientBag = (ConcurrentBag<int>)(client.Metadata["mrBag"] ??= new ConcurrentBag<int>());
+        foreach (int mr in mrBag)
+        {
+            if (!force && clientBag.Contains(mr)) continue;
+            if (!client.Connected) return;
+            await client.Send(new MoonRockPacket { WorldId = mr });
+            clientBag.Add(mr);
+        }
+    }
+    catch
+    {
         // errors that can happen when sending will crash the server :)
     }
 }
@@ -88,11 +149,48 @@ async void SyncShineBag(bool force = false) {
     }
 }
 
+async void SyncCcBag(bool force = false)
+{
+    try
+    {
+        await Parallel.ForEachAsync(server.ClientsConnected.ToArray(), async (client, _) => await ClientSyncCcBag(client, force));
+    }
+    catch
+    {
+        // errors that can happen when sending will crash the server :)
+    }
+}
+
+async void SyncCpBag(bool force = false) {
+    try
+    {
+        await Parallel.ForEachAsync(server.ClientsConnected.ToArray(), async (client, _) => await ClientSyncCpBag(client, force));
+    }
+    catch
+    {
+        // errors that can happen when sending will crash the server :)
+    }
+}
+
+async void SyncMrBag(bool force = false) {
+    try
+    {
+        await Parallel.ForEachAsync(server.ClientsConnected.ToArray(), async (client, _) => await ClientSyncMrBag(client, force));
+    }
+    catch
+    {
+        // errors that can happen when sending will crash the server :)
+    }
+}
+
 Timer timer = new Timer(120000) { // 2 minutes
     AutoReset = true,
     Enabled = true,
 };
 timer.Elapsed += (_, _) => { SyncShineBag(); };
+timer.Elapsed += (_, _) => { SyncCcBag(); };
+timer.Elapsed += (_, _) => { SyncCpBag(); };
+timer.Elapsed += (_, _) => { SyncMrBag(); };
 
 void LogError(Task x) {
     if (x.Exception != null)
@@ -104,7 +202,6 @@ void LogError(Task x) {
 server.PacketHandler = (client, packet) => {
     switch (packet)
     {
-        //TODO: change clear shine bag to game start packet
         case GamePacket gamePacket: {
             // crash ignored player
             if (client.Ignored) {
@@ -131,37 +228,6 @@ server.PacketHandler = (client, packet) => {
             client.Metadata["scenario"] = gamePacket.ScenarioNum;
             client.Metadata["2d"] = gamePacket.Is2d;
             client.Metadata["lastGamePacket"] = gamePacket;
-
-            switch (gamePacket.Stage)
-            {
-                case "CapWorldHomeStage" when gamePacket.ScenarioNum == 1:
-                case "CapWorldTowerStage" when gamePacket.ScenarioNum == 1:
-                    if (!((bool?)client.Metadata["disableShineSync"] ?? false))
-                    {
-                        client.Metadata["disableShineSync"] = true;
-                        ((ConcurrentBag<int>)(client.Metadata["shineBag"] ??= new ConcurrentBag<int>())).Clear();
-                        client.Logger.Info("Entered Cap on new save, preventing moon sync until Cascade");
-                        if (Settings.Instance.Shines.ClearOnNewSaves)
-                        {
-                            shineBag.Clear();
-                            client.Logger.Info("Cleared shine bags");
-                            Task.Run(PersistShines);
-                        }
-                    }
-                    break;
-                default:
-                    if ((bool?)client.Metadata["disableShineSync"] ?? false)
-                    {
-                        Task.Run(async () =>
-                        {
-                            client.Logger.Info("Entered Cascade or later with moon sync disabled, enabling moon sync again");
-                            await Task.Delay(2000);
-                            client.Metadata["disableShineSync"] = false;
-                            await ClientSyncShineBag(client);
-                        });
-                    }
-                    break;
-            }
             break;
         }
 
@@ -217,24 +283,20 @@ server.PacketHandler = (client, packet) => {
 #pragma warning disable CS4014
             ClientSyncShineBag(client); //no point logging since entire def has try/catch
 #pragma warning restore CS4014
-            client.Metadata["loadedSave"] = true;
             break;
         }
 
         case ShinePacket shinePacket: {
-            if (!Settings.Instance.Shines.Enabled) return false;
-            if (Settings.Instance.Shines.Excluded.Contains(shinePacket.ShineId))
-            {
-                client.Logger.Info($"Got moon {shinePacket.ShineId} (excluded)");
-                return false;
-            }
-            if (client.Metadata["loadedSave"] is false) break;
+            if (!Settings.Syncing.Shines.Enabled) return false;
             
             ConcurrentBag<int> playerBag = (ConcurrentBag<int>)client.Metadata["shineBag"]!;
             shineBag.Add(shinePacket.ShineId);
             if (playerBag.Contains(shinePacket.ShineId)) break;
             client.Logger.Info($"Got moon {shinePacket.ShineId}");
             playerBag.Add(shinePacket.ShineId);
+            
+            Parallel.ForEach(server.ClientsConnected.ToArray(),  (c, _) =>
+                ((ConcurrentBag<int>)c.Metadata["shineBag"]!).Add(shinePacket.ShineId));
             SyncShineBag();
             break;
         }
@@ -245,21 +307,71 @@ server.PacketHandler = (client, packet) => {
         }
         
         case CheckpointPacket checkpointPacket: {
+            if(!Settings.Syncing.Checkpoints.Enabled) return false;
+            ConcurrentBag<string> playerBag = (ConcurrentBag<string>)client.Metadata["cpBag"]!;
+            cpBag.Add(checkpointPacket.ObjId);
+            if (playerBag.Contains(checkpointPacket.ObjId)) break;
             client.Logger.Info($"Got checkpoint: {Util.CheckpointNames[checkpointPacket.ObjId]}");
+            playerBag.Add(checkpointPacket.ObjId);
+            Parallel.ForEach(server.ClientsConnected.ToArray(),  (c, _) =>
+                ((ConcurrentBag<string>)c.Metadata["cpBag"]!).Add(checkpointPacket.ObjId));
+            SyncCpBag();
             break;
         }
         
         case MoonRockPacket moonRockPacket: {
+            if (!Settings.Syncing.MoonRocks.Enabled) return false;
+            ConcurrentBag<int> playerBag = (ConcurrentBag<int>)client.Metadata["mrBag"]!;
+            mrBag.Add(moonRockPacket.WorldId);
+            if (playerBag.Contains(moonRockPacket.WorldId)) break;
             client.Logger.Info($"Hit Moon Rock in {Util.KingdomNames[moonRockPacket.WorldId]}");
+            playerBag.Add(moonRockPacket.WorldId);
+            Parallel.ForEach(server.ClientsConnected.ToArray(),  (c, _) =>
+                ((ConcurrentBag<int>)c.Metadata["mrBag"]!).Add(moonRockPacket.WorldId));
+            SyncMrBag();
             break;
         }
         
-        case CoinCollectCollPacket coinCollectCollPacket: {
+        case CoinCollectPacket coinCollectCollPacket: {
+            if (!Settings.Syncing.Regionals.Enabled) return false;
+            ConcurrentBag<CoinCollect> playerBag = (ConcurrentBag<CoinCollect>)client.Metadata["ccBag"]!;
+            CoinCollect cc = new(coinCollectCollPacket.PlaceId, coinCollectCollPacket.Stage, coinCollectCollPacket.WorldId);
+            ccBag.Add(cc);
+            if(playerBag.Contains(cc)) break;
             client.Logger.Info($"Got reginal coin in {Util.KingdomNames[coinCollectCollPacket.WorldId]}");
+            playerBag.Add(cc);
+            Parallel.ForEach(server.ClientsConnected.ToArray(),  (c, _) =>
+                ((ConcurrentBag<CoinCollect>)c.Metadata["ccBag"]!).Add(cc));
+            SyncCcBag();
             break;
         }
         
         case GameStartPacket: {
+            
+            ((ConcurrentBag<int>)(client.Metadata["shineBag"] ??= new ConcurrentBag<int>())).Clear();
+            ((ConcurrentBag<CoinCollect>)(client.Metadata["ccBag"] ??= new ConcurrentBag<CoinCollect>()))
+                .Clear();
+            ((ConcurrentBag<string>)(client.Metadata["cpBag"] ??= new ConcurrentBag<string>())).Clear();
+            ((ConcurrentBag<int>)(client.Metadata["mrBag"] ??= new ConcurrentBag<int>())).Clear();
+            
+            if (Settings.Syncing.Shines.ClearOnNewSaves) {
+                shineBag.Clear();
+                Task.Run(PersistShines);
+                server.Logger.Info("Cleared Shine Bag");
+            }
+            if (Settings.Syncing.Regionals.CleanOnNewSaves) {
+                ccBag.Clear();
+                server.Logger.Info("Cleared Region Coin Bag");
+            }
+            if (Settings.Syncing.Checkpoints.CleanOnNewSaves) {
+                cpBag.Clear();
+                server.Logger.Info("Cleared Checkpoint Bag");
+            }
+            if (Settings.Syncing.MoonRocks.CleanOnNewSaves) {
+                mrBag.Clear();
+                server.Logger.Info("Cleared Moon Rock Bag");
+            }
+            
             client.Logger.Info("Started");
             break;
         }
@@ -558,11 +670,11 @@ CommandHandler.RegisterCommand("tag", args => {
 CommandHandler.RegisterCommand("maxplayers", args => {
     const string optionUsage = "Valid usage: maxplayers <playercount>";
     
-    if (args.Length == 0) return $"Max player count: {Settings.Instance.Server.MaxPlayers}";
+    if (args.Length == 0) return $"Max player count: {Settings.Server.MaxPlayers}";
     if (args.Length > 1) return optionUsage;
     if (!ushort.TryParse(args[0], out ushort maxPlayers)) return "Not a valid number";
     
-    Settings.Instance.Server.MaxPlayers = maxPlayers;
+    Settings.Server.MaxPlayers = maxPlayers;
     Settings.SaveSettings();
     
     foreach (Client client in server.Clients)
@@ -576,17 +688,13 @@ CommandHandler.RegisterCommand("list",
 
 
 CommandHandler.RegisterCommand("shine", args => {
-    const string optionUsage = "Valid options: list, clear, sync, fsync, send, set, include, exclude";
+    const string optionUsage = "Valid options: list, clear, sync, fsync, send, set";
     if (args.Length < 1)
         return optionUsage;
     switch (args[0]) {
         case "list": {
             if (args.Length != 1) return "Usage: shine list";
-            return $"Shines: {string.Join(", ", shineBag)}" + (
-                Settings.Instance.Shines.Excluded.Any()
-                    ? "\nExcluded Shines: " + string.Join(", ", Settings.Instance.Shines.Excluded)
-                    : ""
-            );
+            return $"Shines: {string.Join(", ", shineBag)}";
         }
         
         case "clear": {
@@ -637,31 +745,12 @@ CommandHandler.RegisterCommand("shine", args => {
                 return "Usage: shine set <true/false>";
             }
             if (bool.TryParse(args[1], out bool result)) {
-                Settings.Instance.Shines.Enabled = result;
+                Settings.Syncing.Shines.Enabled = result;
                 Settings.SaveSettings();
                 return result ? "Enabled shine sync" : "Disabled shine sync";
             }
 
             return optionUsage;
-        }
-        
-        case "exclude":
-        case "include": {
-            if (args.Length != 2) return $"Usage: shine {args[0]} <id>";
-            if (int.TryParse(args[1], out int sid)) {
-                if (args[0] == "exclude")
-                {
-                    Settings.Instance.Shines.Excluded.Add(sid);
-                    Settings.SaveSettings();
-                    return $"Exclude shine {sid} from syncing.";
-                }
-                
-                Settings.Instance.Shines.Excluded.Remove(sid);
-                Settings.SaveSettings();
-                return $"No longer exclude shine {sid} from syncing.";
-                
-            }
-            return "Shine ID invalid";
         }
         
         default:
@@ -670,37 +759,56 @@ CommandHandler.RegisterCommand("shine", args => {
 });
 
 
+CommandHandler.RegisterCommand("syncing", args => {
+    const string optionUsage = "Valid options: sync, fsync";
+    if (args.Length != 1) return optionUsage;
+    if (args[0] == "sync") {
+        SyncShineBag();
+        SyncCcBag();
+        SyncCpBag();
+        SyncMrBag();
+        return "Synced everything";
+    }
+    if (args[0] == "fsync") {
+        SyncShineBag(true);
+        SyncCcBag(true);
+        SyncCpBag(true);
+        SyncMrBag(true);
+        return "Synced everything forcibly";
+    }
+    return optionUsage;
+});
+
 CommandHandler.RegisterCommand("loadsettings", _ => {
     Settings.LoadSettings();
     return "Loaded settings.json";
 });
 
-CommandHandler.RegisterCommand("restartserver", args =>{
-    if (args.Length != 0) {
-        return "Usage: restartserver";
-    }
-    
-    consoleLogger.Info("Received restartserver command");
+CommandHandler.RegisterCommandAliases( args =>{
+    shouldRun = true;
+    consoleLogger.Info("Received restart command");
     cts.Cancel();
     return "Restarting...";
     
-});
+},"restartserver","restart");
 #endregion
 
 Console.CancelKeyPress += (_, e) => {
     e.Cancel = true;
+    shouldRun = false;
     consoleLogger.Info("Received Ctrl+C");
     cts.Cancel();
 };
 
-CommandHandler.RegisterCommandAliases(_ => {
+CommandHandler.RegisterCommandAliases(_ =>
+{
+    shouldRun = false;
     cts.Cancel();
     return "Shutting down";
 }, "exit", "quit", "q");
 
 #pragma warning disable CS4014
 Task.Run(() => {
-    consoleLogger.Info("Run help command for valid commands.");
     while (true) {
         string? text = Console.ReadLine();
         if (text != null) {
@@ -712,5 +820,15 @@ Task.Run(() => {
 }).ContinueWith(LogError);
 #pragma warning restore CS4014
 
-var gameTask = server.Listen(cts.Token);
-await gameTask;
+while (shouldRun)
+{
+    cts.Dispose();
+    cts = new CancellationTokenSource();
+    Settings.LoadSettings();
+    // Load shines table from file
+    await LoadShines();
+    consoleLogger.Info("Server started!");
+    consoleLogger.Info("Run help command for valid commands.");
+    var gameTask = server.Listen(cts.Token);
+    await gameTask;
+}
