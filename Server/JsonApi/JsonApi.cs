@@ -28,14 +28,12 @@ public static class JsonApi {
 
         // check packet type
         if ((ushort) header.Type != PacketType) {
-            server.Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
             return false;
         }
 
         // check entire header length
         string headerStr = Encoding.UTF8.GetString(memory.Memory.Span[..Constants.HeaderSize].ToArray());
         if (headerStr != Preamble) {
-            server.Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
             return false;
         }
 
@@ -46,6 +44,8 @@ public static class JsonApi {
             Logger.Info($"Rejected blocked client {socket.RemoteEndPoint}.");
             return true;
         }
+        
+        Logger.Info($"Received JSON API request from {socket.RemoteEndPoint}.");
 
         // receive & parse JSON
         ApiPacket? p = await ApiPacket.Read(ctx, headerStr);
