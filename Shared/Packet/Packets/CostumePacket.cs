@@ -14,13 +14,13 @@ public struct CostumePacket() : IPacket
 
     public void Serialize(Span<byte> data)
     {
-        Encoding.ASCII.GetBytes(BodyName ?? "").CopyTo(data[..Constants.CostumeNameSize]);
-        Encoding.ASCII.GetBytes(CapName ?? "").CopyTo(data[Constants.CostumeNameSize..(Constants.CostumeNameSize * 2)]);
+        Encoding.UTF8.GetBytes(BodyName ?? "").CopyTo(data[..Constants.CostumeNameSize]);
+        Encoding.UTF8.GetBytes(CapName ?? "").CopyTo(data[Constants.CostumeNameSize..(Constants.CostumeNameSize * 2)]);
     }
 
     public void Deserialize(ReadOnlySpan<byte> data)
     {
-        BodyName = Encoding.ASCII.GetString(data.Slice(0, Constants.CostumeNameSize)).TrimNullTerm();
-        CapName = Encoding.ASCII.GetString(data.Slice(Constants.CostumeNameSize, Constants.CostumeNameSize)).TrimNullTerm();
+        BodyName = Encoding.UTF8.GetString(data.Slice(0, Constants.CostumeNameSize)).TrimNullTerm();
+        CapName = Encoding.UTF8.GetString(data.Slice(Constants.CostumeNameSize, Constants.CostumeNameSize)).TrimNullTerm();
     }
 }
