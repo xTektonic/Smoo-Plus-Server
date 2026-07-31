@@ -14,8 +14,8 @@ public struct CostumePacket() : IPacket
 
     public void Serialize(Span<byte> data)
     {
-        Encoding.UTF8.GetBytes(BodyName ?? "").CopyTo(data[..Constants.CostumeNameSize]);
-        Encoding.UTF8.GetBytes(CapName ?? "").CopyTo(data[Constants.CostumeNameSize..(Constants.CostumeNameSize * 2)]);
+        Encoding.ASCII.GetBytes(BodyName ?? "").CopyTo(data[..Constants.CostumeNameSize]);
+        Encoding.ASCII.GetBytes(CapName ?? "").CopyTo(data[Constants.CostumeNameSize..(Constants.CostumeNameSize * 2)]);
     }
 
     public void Deserialize(ReadOnlySpan<byte> data)
