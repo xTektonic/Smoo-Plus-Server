@@ -26,8 +26,11 @@ Currently available `Type` of requests:
 Specific settings and commands aren't hardcoded, but the API should automatically work for future extensions on both.
 The server operator only needs to add the new permissions for the new commands or settings that they want to whitelist to the `settings.json`.
 
+Permissions can end in `/*` to allow access to everything below that branch, for example `Status/Settings/*` or `Status/Players/*`.
+
 The possible player status permissions are hardcoded though:
 - `Status/Players`
+- `Status/Players/*`
 - `Status/Players/ID`
 - `Status/Players/Name`
 - `Status/Players/GameMode`
@@ -41,6 +44,8 @@ The possible player status permissions are hardcoded though:
 - `Status/Players/Capture`
 - `Status/Players/Is2D`
 - `Status/Players/IPv4`
+
+`Status/*` grants access to all settings in the `Status` response, including nested settings.
 
 ---
 

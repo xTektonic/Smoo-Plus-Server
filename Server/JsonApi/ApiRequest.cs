@@ -11,51 +11,46 @@ public class ApiRequest {
     public JsonNode? Data { get; set; }
 
 
-    private static TypesDictionary Types = new TypesDictionary() {
-        ["Status"]      = async (Context ctx) => await ApiRequestStatus.Send(ctx),
-        ["Command"]     = async (Context ctx) => await ApiRequestCommand.Send(ctx),
-        ["Permissions"] = async (Context ctx) => await ApiRequestPermissions.Send(ctx),
-        ["Stages"]      = async (Context ctx) => await ApiRequestStages.Send(ctx),
-        ["Settings"]    = async (Context ctx) => await ApiRequestSettings.Send(ctx),
+    private static readonly TypesDictionary Types = new () {
+        ["Status"]      = async ctx => await ApiRequestStatus.Send(ctx),
+        ["Command"]     = async ctx => await ApiRequestCommand.Send(ctx),
+        ["Permissions"] = async ctx => await ApiRequestPermissions.Send(ctx),
+        ["Stages"]      = async ctx => await ApiRequestStages.Send(ctx),
+        ["Settings"]    = async ctx => await ApiRequestSettings.Send(ctx),
     };
 
 
     public string? GetStringData() {
-        if (this.Data is JsonValue) {
-            JsonElement val = this.Data.GetValue<JsonElement>();
-            JsonValueKind kind = val.ValueKind;
-            if (kind == JsonValueKind.String) { return val.GetString(); }
-        }
-        return null;
+        return Data?.GetValue<string>();
     }
 
 
     public async Task<bool> Process(Context ctx) {
-        if (this.Type != null) {
-            return await ApiRequest.Types[this.Type](ctx);
+        if (Type != null) {
+            return await Types[Type](ctx);
         }
         return false;
     }
 
 
     public bool IsValid(Context ctx) {
-        if (this.Token == null) {
-            JsonApi.Logger.Warn($"Invalid request missing Token from {ctx.socket.RemoteEndPoint}.");
+        if (Token == null) {
+            JsonApi.Logger.Warn($"Invalid request missing Token from {ctx.Socket?.RemoteEndPoint}.");
             return false;
         }
 
-        if (this.Type == null) {
-            JsonApi.Logger.Warn($"Invalid request missing Type from {ctx.socket.RemoteEndPoint}.");
+        if (Type == null) {
+            JsonApi.Logger.Warn($"Invalid request missing Type from {ctx.Socket?.RemoteEndPoint}.");
             return false;
         }
 
-        if (!ApiRequest.Types.ContainsKey(this.Type)) {
-            JsonApi.Logger.Warn($"Invalid Type \"{this.Type}\" from {ctx.socket.RemoteEndPoint}.");
+        if (!Types.ContainsKey(Type)) {
+            JsonApi.Logger.Warn($"Invalid Type \"{Type}\" from {ctx.Socket?.RemoteEndPoint}.");
             return false;
         }
 
-        if (!Settings.Instance.JsonApi.Tokens.ContainsKey(this.Token)) {
-            JsonApi.Logger.Warn($"Invalid Token from {ctx.socket.RemoteEndPoint}.");
+        if (!Settings.Instance.JsonApi.Tokens.ContainsKey(Token)) {
+            JsonApi.Logger.Warn($"Invalid Token from {ctx.Socket?.RemoteEndPoint}.");
             return false;
         }
 

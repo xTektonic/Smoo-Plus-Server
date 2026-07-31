@@ -190,7 +190,7 @@ public class Server
                 PacketHeader header = GetHeader(memory.Memory.Span);
                 
                 // if API Request, close socket after request is handled
-                if (first && await JsonApi.JsonApi.HandleAPIRequest(this, socket, header, memory)) { goto close; } 
+                if (first && await JsonApi.JsonApi.HandleApiRequest(this, socket, header, memory)) { goto close; } 
                 
                 int packetSize = header.PacketSize;
                 

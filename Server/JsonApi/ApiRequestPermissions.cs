@@ -7,7 +7,8 @@ public static class ApiRequestPermissions {
     }
 
 
-    private class Response {
+    private class Response
+    {
         public string[]? Permissions { get; set; }
 
 

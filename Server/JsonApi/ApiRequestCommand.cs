@@ -7,23 +7,27 @@ public static class ApiRequestCommand {
             return true;
         }
 
-        if (!ApiRequestCommand.IsValid(ctx)) {
+        if (!IsValid(ctx)) {
             return false;
         }
 
-        string input = ctx.request!.GetStringData()!;
+        string input = ctx.Request!.GetStringData()!;
         string command = input.Split(" ")[0];
 
         // help doesn't need permissions and is invidualized to the token
         if (command == "help") {
-            List<string> commands = new List<string>();
-            commands.Add("help");
-            commands.AddRange(
-                ctx.Permissions
-                    .Where(str => str.StartsWith("Commands/"))
-                    .Select(str => str.Substring(9))
-                    .Where(cmd => CommandHandler.Handlers.ContainsKey(cmd))
-            );
+            List<string> commands = ["help"];
+            if (ctx.Permissions.Contains("Commands/*"))
+            {
+                commands.AddRange(CommandHandler.Handlers.Keys);
+            } else {
+                commands.AddRange(
+                    ctx.Permissions
+                        .Where(str => str.StartsWith("Commands/"))
+                        .Select(str => str.Substring(9))
+                        .Where(cmd => CommandHandler.Handlers.ContainsKey(cmd))
+                );
+            }
             string commandsStr = string.Join(", ", commands);
 
             await Response.Send(ctx, $"Valid commands: {commandsStr}");
@@ -31,7 +35,7 @@ public static class ApiRequestCommand {
         }
 
         // no permissions
-        if (! ctx.HasPermission($"Commands/{command}")) {
+        if (!ctx.HasPermission($"Commands/{command}") && !ctx.HasPermission("Commands/*")) {
             await Response.Send(ctx, $"Error: Missing Commands/{command} permission.");
             return true;
         }
@@ -44,10 +48,10 @@ public static class ApiRequestCommand {
 
 
     private static bool IsValid(Context ctx) {
-        string? command = ctx.request!.GetStringData();
+        string? command = ctx.Request!.GetStringData();
 
         if (command == null) {
-            JsonApi.Logger.Warn($"[Commands] Invalid request. Data is not a \"System.String\" from {ctx.socket.RemoteEndPoint}.");
+            JsonApi.Logger.Warn($"[Commands] Invalid request. Data is not a \"System.String\" from {ctx.Socket?.RemoteEndPoint}.");
             return false;
         }
 
@@ -55,14 +59,14 @@ public static class ApiRequestCommand {
     }
 
 
-    private class Response {
+    private class Response
+    {
         public string[]? Output { get; set; }
 
 
         public static async Task Send(Context ctx, CommandHandler.Response response)
         {
-            Response resp = new Response();
-            resp.Output = response.ReturnStrings;
+            Response resp = new() { Output = response.ReturnStrings };
             await ctx.Send(resp);
         }
     }

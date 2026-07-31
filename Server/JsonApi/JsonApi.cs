@@ -1,9 +1,6 @@
 using System.Buffers;
 using System.Net.Sockets;
 using System.Text;
-
-using Server;
-
 using Shared;
 using Shared.Packet;
 
@@ -11,14 +8,14 @@ namespace Server.JsonApi;
 
 
 public static class JsonApi {
-    public const ushort PACKET_TYPE = 0x5453; // ascii "ST" (0x53 0x54) from preamble, but swapped because of endianness
-    public const string PREAMBLE = "{\"API_JSON_REQUEST\":";
+    private const ushort PacketType = 0x5453; // ascii "ST" (0x53 0x54) from preamble, but swapped because of endianness
+    private const string Preamble = "{\"API_JSON_REQUEST\":";
 
 
-    public static readonly Logger Logger = new Logger("JsonApi");
+    public static readonly Logger Logger = new ("JsonApi");
 
 
-    public static async Task<bool> HandleAPIRequest(
+    public static async Task<bool> HandleApiRequest(
         Server server,
         Socket socket,
         PacketHeader header,
@@ -30,14 +27,14 @@ public static class JsonApi {
         }
 
         // check packet type
-        if ((ushort) header.Type != JsonApi.PACKET_TYPE) {
+        if ((ushort) header.Type != PacketType) {
             server.Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
             return false;
         }
 
         // check entire header length
         string headerStr = Encoding.UTF8.GetString(memory.Memory.Span[..Constants.HeaderSize].ToArray());
-        if (headerStr != JsonApi.PREAMBLE) {
+        if (headerStr != Preamble) {
             server.Logger.Warn($"Accepted connection for client {socket.RemoteEndPoint}");
             return false;
         }
@@ -46,7 +43,7 @@ public static class JsonApi {
 
         // not if there were too many failed attempts in the past
         if (BlockClients.IsBlocked(ctx)) {
-            JsonApi.Logger.Info($"Rejected blocked client {socket.RemoteEndPoint}.");
+            Logger.Info($"Rejected blocked client {socket.RemoteEndPoint}.");
             return true;
         }
 
@@ -58,8 +55,8 @@ public static class JsonApi {
         }
 
         // verify basic request structure & token
-        ApiRequest req = p.API_JSON_REQUEST!;
-        ctx.request = req;
+        ApiRequest req = p.ApiJsonRequest!;
+        ctx.Request = req;
         if (!req.IsValid(ctx)) {
             BlockClients.Fail(ctx);
             return true;

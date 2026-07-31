@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Newtonsoft.Json;
 using Server.JsonApi;
 using Server;
 using Sever.Server;
@@ -20,13 +21,13 @@ await bot.Run();
 consoleLogger.Info("Server started!");
 
 async Task PersistShines() {
-    if (!Settings.Instance.PersistShines.Enabled) {
+    if (!Settings.Instance.Shines.PersistShines.Enabled) {
         return;
     }
 
     try {
-        string shineJson = JsonSerializer.Serialize(shineBag);
-        await File.WriteAllTextAsync(Settings.Instance.PersistShines.Filename, shineJson);
+        string shineJson = JsonConvert.SerializeObject(shineBag);
+        await File.WriteAllTextAsync(Settings.Instance.Shines.PersistShines.Filename, shineJson);
     }
     catch (Exception ex) {
         consoleLogger.Error(ex);
@@ -34,12 +35,12 @@ async Task PersistShines() {
 }
 
 async Task LoadShines() {
-    if (!Settings.Instance.PersistShines.Enabled) {
+    if (!Settings.Instance.Shines.PersistShines.Enabled) {
         return;
     }
     try {
-        string shineJson = await File.ReadAllTextAsync(Settings.Instance.PersistShines.Filename);
-        var loadedShines = JsonSerializer.Deserialize<HashSet<int>>(shineJson);
+        string shineJson = await File.ReadAllTextAsync(Settings.Instance.Shines.PersistShines.Filename);
+        var loadedShines = JsonConvert.DeserializeObject<HashSet<int>>(shineJson);
 
         if (loadedShines is not null) shineBag = loadedShines;
     }
@@ -161,19 +162,6 @@ server.PacketHandler = (client, packet) => {
                     }
                     break;
             }
-
-            if (Settings.Instance.Scenario.MergeEnabled)
-            {
-                server.BroadcastReplace(gamePacket, client, (from, to, gp) =>
-                {
-                    gp.ScenarioNum = (byte?)to.Metadata["scenario"] ?? 200;
-#pragma warning disable CS4014
-                    to.Send(gp, from).ContinueWith(LogError);
-#pragma warning restore CS4014
-                });
-                return false;
-            }
-
             break;
         }
 
@@ -451,28 +439,6 @@ CommandHandler.RegisterCommand("sendall", args => {
     }).Wait();
 
     return $"Sent players to {stage}:{-1}";
-});
-
-// Unnecessary in SMOO+, kept for compatibility
-CommandHandler.RegisterCommand("scenario", args => {
-    const string optionUsage = "Valid options: merge [true/false]";
-    if (args.Length < 1)
-        return optionUsage;
-    switch (args[0]) {
-        case "merge" when args.Length == 2: {
-                if (bool.TryParse(args[1], out bool result)) {
-                    Settings.Instance.Scenario.MergeEnabled = result;
-                    Settings.SaveSettings();
-                    return result ? "Enabled scenario merge" : "Disabled scenario merge";
-                }
-                return optionUsage;
-            }
-        case "merge" when args.Length == 1: {
-                return $"Scenario merging is {Settings.Instance.Scenario.MergeEnabled}";
-            }
-        default:
-            return optionUsage;
-    }
 });
 
 // Not in SMOO+, kept for compatibility 
@@ -844,7 +810,7 @@ if(false)// (Settings.Instance.WebInterface.Enabled)
                                 consoleLogger.Error($"Error handling API request: {ex}");
                                 context.Response.StatusCode = 500;
                                 var errorResponse = new { error = "Internal server error", details = ex.Message };
-                                string errorJson = JsonSerializer.Serialize(errorResponse);
+                                string errorJson = JsonConvert.SerializeObject(errorResponse);
                                 await context.Response.OutputStream.WriteAsync(Encoding.UTF8.GetBytes(errorJson));
                             }
                             finally
@@ -939,7 +905,7 @@ if(false)// (Settings.Instance.WebInterface.Enabled)
                 {
                     var banPlayers = Settings.Instance.BanList.Players?.Select(guid => guid.ToString()).ToArray() ?? Array.Empty<string>();
                     var banStages = Settings.Instance.BanList.Stages?.ToArray() ?? Array.Empty<string>();
-                    string response = JsonSerializer.Serialize(new
+                    string response = JsonConvert.SerializeObject(new
                     {
                         players = banPlayers,
                         stages = banStages
@@ -1051,7 +1017,7 @@ if(false)// (Settings.Instance.WebInterface.Enabled)
                             };
                         }).ToArray();
 
-                    string response = JsonSerializer.Serialize(new { Players = players });
+                    string response = JsonConvert.SerializeObject(new { Players = players });
                     context.Response.ContentType = "application/json";
                     byte[] buffer = Encoding.UTF8.GetBytes(response);
                     context.Response.ContentLength64 = buffer.Length;
@@ -1119,7 +1085,7 @@ if(false)// (Settings.Instance.WebInterface.Enabled)
                             mapImages
                         };
 
-                        string jsonResponse =JsonSerializer.Serialize(response);
+                        string jsonResponse = JsonConvert.SerializeObject(response);
                         context.Response.ContentType = "application/json";
                         byte[] buffer = Encoding.UTF8.GetBytes(jsonResponse);
                         context.Response.ContentLength64 = buffer.Length;

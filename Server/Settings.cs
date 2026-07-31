@@ -7,8 +7,8 @@ using Shared;
 namespace Server;
 
 public class Settings {
-    public static Settings Instance = new Settings();
-    private static readonly Logger Logger = new Logger("Settings");
+    public static Settings Instance = new ();
+    private static readonly Logger Logger = new ("Settings");
     public static Action? LoadHandler;
 
     static Settings() {
@@ -44,23 +44,17 @@ public class Settings {
         }
     }
 
-    public readonly ServerTable Server = new();
-    public readonly ScenarioTable Scenario = new();
-    public readonly BanListTable BanList = new();
-    public readonly DiscordTable Discord = new();
-    public readonly ShineTable Shines = new();
-    public readonly PersistShinesTable PersistShines = new();
-    public readonly JsonApiTable JsonApi = new();
-    public readonly WebInterfaceTable WebInterface = new();
+    public ServerTable Server { get; set; } = new();
+    public BanListTable BanList { get; set; } = new();
+    public DiscordTable Discord { get; set; } = new();
+    public ShineTable Shines { get; set; } = new();
+    public JsonApiTable JsonApi { get; set; } = new();
+    public WebInterfaceTable WebInterface { get; set; } = new();
 
     public class ServerTable {
         public string Address { get; set; } = IPAddress.Any.ToString();
         public ushort Port { get; set; } = 1027;
         public ushort MaxPlayers { get; set; } = 8;
-    }
-
-    public class ScenarioTable {
-        public bool MergeEnabled { get; set; }
     }
 
     public class BanListTable {
@@ -73,35 +67,37 @@ public class Settings {
 
     public class DiscordTable
     {
-        public readonly string? Token = null;
-        public readonly string Prefix = "$";
-        public readonly string? CommandChannel = null;
-        public readonly string? LogChannel = null;
+        public string? Token { get; set; } = null;
+        public string Prefix { get; set; } = "$";
+        public string? CommandChannel { get; set; } = null;
+        public string? LogChannel { get; set; } = null;
     }
 
     public class ShineTable {
-        public bool Enabled = true;
-        public readonly ISet<int> Excluded = new SortedSet<int>();
-        public readonly bool ClearOnNewSaves = false;
+        public bool Enabled { get; set; } = true;
+        public ISet<int> Excluded { get; set; } = new SortedSet<int>();
+        public bool ClearOnNewSaves { get; set; } = false;
+        
+        public class PersistShinesTable
+        {
+            public bool Enabled { get; set; } = false;
+            public string Filename { get; set; } = "./moons.json";
+        }
+        
+        public PersistShinesTable PersistShines { get; set; } = new();
     }
-
-    public class PersistShinesTable
-    {
-        public readonly bool Enabled = false;
-        public readonly string Filename = "./moons.json";
-    }
-
+    
     public class JsonApiTable
     {
-        public readonly bool Enabled = false;
-        public readonly Dictionary<string, SortedSet<string>> Tokens = new();
+        public bool Enabled { get; set; } = false;
+        public Dictionary<string, SortedSet<string>> Tokens { get; set; } = new();
     }
     public class WebInterfaceTable
     {
-        public readonly string Username = "admin";
-        public readonly string Password = "admin";
-        public readonly bool Enabled = true;
-        public readonly string? Address = "localhost";
-        public readonly ushort Port = 8080;
+        public string Username { get; set; } = "admin";
+        public string Password { get; set; } = "admin";
+        public bool Enabled { get; set; } = true;
+        public string? Address { get; set; } = "localhost";
+        public ushort Port { get; set; } = 8080;
     }
 }

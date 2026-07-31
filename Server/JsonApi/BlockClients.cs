@@ -1,46 +1,43 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Net.Sockets;
 
 namespace Server.JsonApi;
 
 public static class BlockClients
 {
-    private const int MAX_TRIES = 5;
-
-
-    private static ConcurrentDictionary<IPAddress, int> Failures = new ConcurrentDictionary<IPAddress, int>();
-
+    private const int MaxTries = 5;
+    
+    private static readonly ConcurrentDictionary<IPAddress, int> Failures = new ();
 
     public static bool IsBlocked(Context ctx) {
-        if (ctx.socket.RemoteEndPoint == null) { return true; }
+        if (ctx.Socket?.RemoteEndPoint == null) { return true; }
 
-        IPAddress ip = (ctx.socket.RemoteEndPoint as IPEndPoint)!.Address;
+        IPAddress ip = (ctx.Socket.RemoteEndPoint as IPEndPoint)!.Address;
 
-        int failures = BlockClients.Failures.GetValueOrDefault(ip, 0);
-        return failures >= BlockClients.MAX_TRIES;
+        int failures = Failures.GetValueOrDefault(ip, 0);
+        return failures >= MaxTries;
     }
 
 
     public static void Fail(Context ctx) {
-        if (ctx.socket.RemoteEndPoint == null) { return; }
+        if (ctx.Socket?.RemoteEndPoint == null) { return; }
 
-        IPAddress ip = (ctx.socket.RemoteEndPoint as IPEndPoint)!.Address;
+        IPAddress ip = (ctx.Socket.RemoteEndPoint as IPEndPoint)!.Address;
 
         int failures = 1;
-        BlockClients.Failures.AddOrUpdate(ip, 1, (k, v) => failures = v + 1);
+        Failures.AddOrUpdate(ip, 1, (_, v) => failures = v + 1);
 
-        if (failures == BlockClients.MAX_TRIES) {
-            JsonApi.Logger.Warn($"Block client {ctx.socket.RemoteEndPoint} because of too many failed requests.");
+        if (failures == MaxTries) {
+            JsonApi.Logger.Warn($"Block client {ctx.Socket.RemoteEndPoint} because of too many failed requests.");
         }
     }
 
 
     public static void Redeem(Context ctx) {
-        if (ctx.socket.RemoteEndPoint == null) { return; }
+        if (ctx.Socket?.RemoteEndPoint == null) { return; }
 
-        IPAddress ip = (ctx.socket.RemoteEndPoint as IPEndPoint)!.Address;
+        IPAddress ip = (ctx.Socket?.RemoteEndPoint as IPEndPoint)!.Address;
 
-        BlockClients.Failures.Remove(ip, out int val);
+        Failures.Remove(ip, out _);
     }
 }

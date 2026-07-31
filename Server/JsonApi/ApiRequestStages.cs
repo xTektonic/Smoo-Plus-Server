@@ -1,6 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Nodes;
-
 namespace Server.JsonApi;
 
 public class ApiRequestStages {
@@ -56,7 +53,7 @@ public class ApiRequestStages {
             // Sende Response über die Send-Methode
             await ctx.Send(response);
             
-            string endpoint = ctx.socket?.RemoteEndPoint?.ToString() ?? ctx.httpContext?.Request.RemoteEndPoint?.ToString() ?? "unknown";
+            string endpoint = ctx.Socket?.RemoteEndPoint?.ToString() ?? ctx.HttpContext?.Request.RemoteEndPoint.ToString() ?? "unknown";
             JsonApi.Logger.Info($"Stages API request from {endpoint}");
             return true;
             

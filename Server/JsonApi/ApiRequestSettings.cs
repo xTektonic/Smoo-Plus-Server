@@ -1,8 +1,4 @@
-using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
-using System.Net;
-using Server;
+using Newtonsoft.Json;
 
 namespace Server.JsonApi;
 
@@ -16,14 +12,14 @@ public class ApiRequestSettings {
             };
 
             // Convert the response to JSON
-            string jsonResponse = JsonSerializer.Serialize(response);
+            string jsonResponse = JsonConvert.SerializeObject(response);
             
             // Use the Context's Send method which now handles both HTTP and socket responses
             await ctx.Send(response);
             
             return true;
         } catch (Exception ex) {
-            ctx.server?.Logger?.Error($"Error in ApiRequestSettings: {ex}");
+            ctx.Server.Logger.Error($"Error in ApiRequestSettings: {ex}");
             return false;
         }
     }
