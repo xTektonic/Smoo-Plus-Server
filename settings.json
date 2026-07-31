@@ -1,11 +1,8 @@
 {
   "Server": {
     "Address": "0.0.0.0",
-    "Port": 1028,
+    "Port": 1027,
     "MaxPlayers": 8
-  },
-  "Scenario": {
-    "MergeEnabled": true
   },
   "BanList": {
     "Enabled": false,
@@ -23,21 +20,15 @@
   "Shines": {
     "Enabled": true,
     "Excluded": [],
-    "ClearOnNewSaves": false
+    "ClearOnNewSaves": false,
+    "PersistShines": {
+      "Enabled": false,
+      "Filename": "./moons.json"
+    }
   },
-  "PersistShines": {
-    "Enabled": false,
-    "Filename": "./moons.json"
-  },
+
   "JsonApi": {
     "Enabled": false,
     "Tokens": {}
-  },
-  "WebInterface": {
-    "Username": "admin",
-    "Password": "admin",
-    "Enabled": true,
-    "Address": "localhost",
-    "Port": 8080
   }
 }

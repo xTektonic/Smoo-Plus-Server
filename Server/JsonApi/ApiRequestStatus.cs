@@ -27,7 +27,6 @@ public static class ApiRequestStatus {
             JsonNode? fullSettings = JsonSerializer.SerializeToNode(Settings.Instance);
             if (fullSettings is JsonObject settingsObject) {
                 settingsObject.Remove("JsonApi");
-                settingsObject.Remove("WebInterface");
             }
             return fullSettings;
         }

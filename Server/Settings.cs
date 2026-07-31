@@ -49,7 +49,6 @@ public class Settings {
     public DiscordTable Discord { get; set; } = new();
     public ShineTable Shines { get; set; } = new();
     public JsonApiTable JsonApi { get; set; } = new();
-    public WebInterfaceTable WebInterface { get; set; } = new();
 
     public class ServerTable {
         public string Address { get; set; } = IPAddress.Any.ToString();
@@ -92,12 +91,5 @@ public class Settings {
         public bool Enabled { get; set; } = false;
         public Dictionary<string, SortedSet<string>> Tokens { get; set; } = new();
     }
-    public class WebInterfaceTable
-    {
-        public string Username { get; set; } = "admin";
-        public string Password { get; set; } = "admin";
-        public bool Enabled { get; set; } = true;
-        public string? Address { get; set; } = "localhost";
-        public ushort Port { get; set; } = 8080;
-    }
+   
 }

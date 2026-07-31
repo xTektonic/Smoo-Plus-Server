@@ -1,6 +1,5 @@
 namespace Server.JsonApi;
 
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 using TypesDictionary = Dictionary<string, Func<Context, Task<bool>>>;
@@ -16,7 +15,6 @@ public class ApiRequest {
         ["Command"]     = async ctx => await ApiRequestCommand.Send(ctx),
         ["Permissions"] = async ctx => await ApiRequestPermissions.Send(ctx),
         ["Stages"]      = async ctx => await ApiRequestStages.Send(ctx),
-        ["Settings"]    = async ctx => await ApiRequestSettings.Send(ctx),
     };
 
 
