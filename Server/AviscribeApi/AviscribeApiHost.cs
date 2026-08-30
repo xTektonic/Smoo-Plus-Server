@@ -182,8 +182,6 @@ public sealed class AviscribeApiHost
 
     private CommandHandler.Response HandleOperatorCommand(string[] args)
     {
-        if (args.Length == 1 && args[0].Equals("list", StringComparison.OrdinalIgnoreCase))
-            return _sessions.GetOperatorSummary();
         if (args.Length == 1 && args[0].Equals("inspect", StringComparison.OrdinalIgnoreCase))
             return _sessions.GetOperatorDetails();
         if (args.Length == 1 && args[0].Equals("state", StringComparison.OrdinalIgnoreCase))
@@ -192,11 +190,6 @@ public sealed class AviscribeApiHost
             return _sessions.EndByOperatorAsync(CancellationToken.None).GetAwaiter().GetResult()
                 ? "Closed the active Aviscribe room."
                 : "No active Aviscribe multiplayer room.";
-        if (args.Length == 1 && args[0].Equals("purge", StringComparison.OrdinalIgnoreCase))
-        {
-            var count = _sessions.PurgeExpiredAsync(CancellationToken.None).GetAwaiter().GetResult();
-            return $"Purged {count} Aviscribe room(s).";
-        }
-        return "Usage: aviscribe list | aviscribe inspect | aviscribe state | aviscribe end | aviscribe purge";
+        return "Valid options: inspect, state, end";
     }
 }

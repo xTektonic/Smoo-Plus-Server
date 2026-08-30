@@ -30,14 +30,12 @@ Run codes are Crockford Base32 in `XXXX-XXXX` form. Participant tokens contain 2
 
 ## Operator controls
 
-- `aviscribe list`
 - `aviscribe inspect`
 - `aviscribe state`
 - `aviscribe end`
-- `aviscribe purge`
 
 Each server port permits one active Aviscribe multiplayer room because it represents the one SMOO+ game on that port. A room is removed immediately when its final player leaves or its run is ended. Rooms with no new room/run events are removed after `IdleExpirationMinutes`, even if a client continues sending wait heartbeats. The player limit always follows `Server.MaxPlayers`; changing the normal server limit also changes future Aviscribe joins.
 
-Because each server port permits only one active room, operator commands automatically target that room and report when none exists. `aviscribe list` includes its room code, internal session ID, current run generation and configuration, player counts, moon-fact count, last event time, and remaining idle lifetime. Room codes persist across server restarts. Participant tokens remain hash-only. `aviscribe state` prints the shared moon facts for the current run.
+Operator commands automatically target the active room and report when none exists. `aviscribe inspect` includes its room code, internal session ID, current run generation and configuration, player details, moon-fact count, and last event time. Room codes persist across server restarts. Participant tokens remain hash-only. `aviscribe state` prints the shared moon facts for the current run.
 
 The `Aviscribe` object in `settings.json` controls enablement, idle and optional maximum lifetime, presence and wait timeouts, persistence filename, and retention limits. The feature is enabled by default.

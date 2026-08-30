@@ -40,6 +40,16 @@ public sealed class AviscribeRoutingTests : IAsyncLifetime
     }
 
     [Fact]
+    public void OperatorCommandUsesStandardOptionHelpAndRejectsRemovedCommands()
+    {
+        const string expected = "Valid options: inspect, state, end";
+
+        Assert.Equal([expected], CommandHandler.GetResult("aviscribe").ReturnStrings);
+        Assert.Equal([expected], CommandHandler.GetResult("aviscribe list").ReturnStrings);
+        Assert.Equal([expected], CommandHandler.GetResult("aviscribe purge").ReturnStrings);
+    }
+
+    [Fact]
     public async Task FragmentedAviscribeRequestIsClaimedBeforeGameClientConstruction()
     {
         var response = await SendAviscribeAsync(new
