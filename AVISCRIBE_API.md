@@ -24,7 +24,9 @@ Manual classification is also numeric: `0` automatic, `1` counted, and `2` uncou
 
 ## Operations
 
-The v1 operations are `capabilities`, `createRun`, `joinRun`, `resumeRun`, `publishEvents`, `waitForChanges`, `leaveRun`, `resetRun`, and `endRun`.
+The v1 operations are `capabilities`, `createRun`, `joinRun`, `resumeRun`, `publishEvents`, `waitForChanges`, `leaveRun`, `resetRun`, `updateConfiguration`, and `endRun`.
+
+`updateConfiguration` is owner-only and changes the shared category/postgame settings without resetting the run generation, moon facts, or processed event history. Waiting clients receive a `configurationChanged` change containing the authoritative configuration.
 
 Run codes are Crockford Base32 in `XXXX-XXXX` form. Participant tokens contain 256 random bits. Only SHA-256 hashes of codes and tokens are persisted, and neither secret is logged.
 

@@ -171,6 +171,96 @@ public sealed class AviscribeSessionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task OwnerCanUpdateConfigurationWithoutResettingRunState()
+    {
+        var manager = new AviscribeSessionManager();
+        await manager.EnsureLoadedAsync(CancellationToken.None);
+        var owner = await manager.CreateRunAsync(Create("Owner"), IPAddress.Loopback, CancellationToken.None);
+        var runner = await manager.JoinRunAsync(new JoinRunRequest
+        {
+            DisplayName = "Runner",
+            JoinCode = owner.JoinCode!,
+            CatalogHash = CatalogHash
+        }, IPAddress.Parse("127.0.0.2"), CancellationToken.None);
+
+        var eventId = Guid.NewGuid();
+        await manager.PublishAsync(Auth(runner), new PublishEventsRequest
+        {
+            Generation = 1,
+            Events = [new RunEvent
+            {
+                EventId = eventId,
+                Kind = RunEventKind.HintObserved,
+                KingdomId = 1,
+                MoonId = 10
+            }]
+        }, CancellationToken.None);
+        var revisionBeforeUpdate = (await manager.ResumeRunAsync(Auth(owner), CancellationToken.None)).Snapshot.Revision;
+
+        var updated = await manager.UpdateConfigurationAsync(
+            Auth(owner),
+            new UpdateConfigurationRequest
+            {
+                Configuration = new RunConfiguration { Category = "hardcore", IncludePostGame = true }
+            },
+            CancellationToken.None);
+
+        Assert.Equal(1, updated.Generation);
+        Assert.Equal("hardcore", updated.Configuration.Category);
+        Assert.True(updated.Configuration.IncludePostGame);
+        Assert.Single(updated.MoonFacts);
+        var change = Assert.Single(updated.RecentEvents, item => item.Revision > revisionBeforeUpdate);
+        Assert.Equal("configurationChanged", change.Kind);
+
+        var duplicate = await manager.PublishAsync(Auth(runner), new PublishEventsRequest
+        {
+            Generation = 1,
+            Events = [new RunEvent
+            {
+                EventId = eventId,
+                Kind = RunEventKind.HintObserved,
+                KingdomId = 1,
+                MoonId = 10
+            }]
+        }, CancellationToken.None);
+        Assert.True(Assert.Single(duplicate.Events).WasDuplicate);
+
+        var waiting = await manager.WaitForChangesAsync(Auth(runner), new WaitForChangesRequest
+        {
+            Generation = 1,
+            AfterRevision = revisionBeforeUpdate
+        }, CancellationToken.None);
+        var configurationChange = Assert.Single(waiting.Changes!);
+        Assert.Equal("configurationChanged", configurationChange.Kind);
+        Assert.Equal("hardcore", configurationChange.Configuration!.Category);
+        Assert.True(configurationChange.Configuration.IncludePostGame);
+    }
+
+    [Fact]
+    public async Task NonOwnerCannotUpdateConfiguration()
+    {
+        var manager = new AviscribeSessionManager();
+        await manager.EnsureLoadedAsync(CancellationToken.None);
+        var owner = await manager.CreateRunAsync(Create("Owner"), IPAddress.Loopback, CancellationToken.None);
+        var runner = await manager.JoinRunAsync(new JoinRunRequest
+        {
+            DisplayName = "Runner",
+            JoinCode = owner.JoinCode!,
+            CatalogHash = CatalogHash
+        }, IPAddress.Parse("127.0.0.2"), CancellationToken.None);
+
+        var exception = await Assert.ThrowsAsync<AviscribeApiException>(() => manager.UpdateConfigurationAsync(
+            Auth(runner),
+            new UpdateConfigurationRequest
+            {
+                Configuration = new RunConfiguration { Category = "hardcore", IncludePostGame = true }
+            },
+            CancellationToken.None));
+
+        Assert.Equal("notOwner", exception.Code);
+    }
+
+    [Fact]
     public async Task CatalogCapacityAndFailedJoinLimitsReturnStructuredCodes()
     {
         Settings.Server.MaxPlayers = 1;

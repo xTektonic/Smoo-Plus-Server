@@ -98,6 +98,11 @@ public sealed class ResetRunRequest
     public RunConfiguration Configuration { get; set; } = new();
 }
 
+public sealed class UpdateConfigurationRequest
+{
+    public RunConfiguration Configuration { get; set; } = new();
+}
+
 public sealed class RunConfiguration
 {
     public string Category { get; set; } = "standard";
@@ -192,6 +197,7 @@ public sealed class RunChange
     public Guid? OwnerParticipantId { get; set; }
     public ParticipantView? Participant { get; set; }
     public int? Generation { get; set; }
+    public RunConfiguration? Configuration { get; set; }
 }
 
 public sealed class RunSnapshot

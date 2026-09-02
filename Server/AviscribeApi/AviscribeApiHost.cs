@@ -139,6 +139,8 @@ public sealed class AviscribeApiHost
             "leaveRun" => await _sessions.LeaveRunAsync(request, cancellationToken),
             "resetRun" => await _sessions.ResetRunAsync(
                 request, Deserialize<ResetRunRequest>(request), cancellationToken),
+            "updateConfiguration" => await _sessions.UpdateConfigurationAsync(
+                request, Deserialize<UpdateConfigurationRequest>(request), cancellationToken),
             "endRun" => await _sessions.EndRunAsync(request, cancellationToken),
             _ => throw new AviscribeApiException("invalidRequest", $"Unknown operation '{request.Operation}'.")
         };

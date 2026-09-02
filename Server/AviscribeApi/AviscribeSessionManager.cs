@@ -432,6 +432,31 @@ public sealed class AviscribeSessionManager
         lock (_sync) return SnapshotLocked(session);
     }
 
+    public async Task<RunSnapshot> UpdateConfigurationAsync(
+        AviscribeRequest envelope,
+        UpdateConfigurationRequest request,
+        CancellationToken cancellationToken)
+    {
+        ValidateConfiguration(request.Configuration);
+        SessionState session;
+        lock (_sync)
+        {
+            (session, var participant) = AuthenticateLocked(envelope, UtcNow);
+            TouchParticipantLocked(session, participant, UtcNow);
+            EnsureOwner(session, participant);
+            session.Configuration = Clone(request.Configuration);
+            AddChangeLocked(session, new RunChange
+            {
+                Kind = "configurationChanged",
+                ActorParticipantId = participant.ParticipantId,
+                ActorDisplayName = participant.DisplayName,
+                Configuration = Clone(session.Configuration)
+            }, feedMessage: $"{participant.DisplayName} updated the run settings.");
+        }
+        await PersistAsync(cancellationToken);
+        lock (_sync) return SnapshotLocked(session);
+    }
+
     public async Task<object> EndRunAsync(AviscribeRequest envelope, CancellationToken cancellationToken)
     {
         Guid sessionId;
@@ -957,7 +982,8 @@ public sealed class AviscribeSessionManager
             IsOwner = source.Participant.IsOwner,
             JoinedSequence = source.Participant.JoinedSequence
         },
-        Generation = source.Generation
+        Generation = source.Generation,
+        Configuration = source.Configuration == null ? null : Clone(source.Configuration)
     };
 
     private static void ValidateDisplayName(string value)
