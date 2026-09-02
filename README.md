@@ -95,11 +95,15 @@ PersistShines/Moons: Allows the server to remember moon progress across crashes/
 
 ### Aviscribe
 
-Enabled: enables Aviscribe multiplayer, default: true
-IdleExpirationMinutes: closes rooms with no run activity, default: 30
-MaximumRunHours: optionally limits the total room lifetime, default: null
-OwnerTimeoutSeconds: transfers ownership when the owner disconnects, default: 45
-StateFilename: stores active rooms across server restarts, default: ./aviscribe-runs.json
+Enabled: enables Aviscribe multiplayer, default: true  
+IdleExpirationMinutes: closes rooms with no run activity, default: 30  
+MaximumRunHours: optionally limits the total room lifetime, default: null  
+OwnerTimeoutSeconds: transfers ownership when the owner disconnects, default: 45  
+WaitTimeoutSeconds: controls how long change requests wait for activity, default: 25  
+StateFilename: stores active rooms across server restarts, default: ./aviscribe-runs.json  
+MaximumEventsPerRun: limits the number of moon events in one run, default: 20000  
+RetainedChangeCount: keeps recent changes for reconnecting players, default: 512  
+RetainedEventFeedCount: limits recent activity shown to players, default: 200
 
 ### Discord
 
